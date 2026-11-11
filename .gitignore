@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
+tests/e2e/out/
+tests/e2e/profile*/
+*.docs
+deploy.md 

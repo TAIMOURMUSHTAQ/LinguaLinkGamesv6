@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LinguaLink Play</title>
+<meta name="description" content="Voice, face and movement games for children. Camera and microphone stay on the device.">
+<meta name="theme-color" content="#1b1f4b">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preload" href="fonts/baloo2-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/lexend-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/play.css">
+<link rel="modulepreload" href="js/app.js">
+</head>
+<body>
+<div id="app">
+
+  <!-- SPLASH: shown while fonts, games and pictures get ready -->
+  <section id="splash" class="screen splash" aria-labelledby="splashTitle">
+    <div class="sky-deco" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="splash-inner">
+      <div class="lumi big" aria-hidden="true"><span class="eyes"></span><span class="mouth"></span></div>
+      <h1 id="splashTitle" data-i18n="brand">LinguaLink Play</h1>
+      <p class="splash-tag" data-i18n="tagline">Play, talk and move. Everything stays on this device.</p>
+      <div class="splash-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="splashStatus"><i id="splashBar"></i></div>
+      <p id="splashStatus" class="splash-status" data-i18n="loading">Getting the games ready…</p>
+      <button id="splashGo" class="btn btn-sun btn-huge" type="button" hidden><span data-i18n="tapToPlay">Tap to play</span></button>
+    </div>
+    <div class="hills-deco" aria-hidden="true"></div>
+  </section>
+
+  <!-- HOME: one big tile per game -->
+  <main id="home" class="screen home" hidden>
+    <div class="sky-deco" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <header class="home-top">
+      <div class="hello">
+        <div class="lumi" aria-hidden="true"><span class="eyes"></span><span class="mouth"></span></div>
+        <div>
+          <p class="brand-small" data-i18n="brand">LinguaLink Play</p>
+          <h1 data-i18n="hello">Hi! What shall we play today?</h1>
+        </div>
+      </div>
+      <div class="home-actions">
+        <span class="pill stars-pill" id="starTotal" aria-live="polite">★ 0</span>
+        <button class="pill pill-btn music-toggle" type="button" aria-pressed="true"><span class="music-icon" aria-hidden="true">🎵</span> <span class="music-label" data-i18n="musicOn">Music on</span></button>
+        <button id="openStickers" class="pill pill-btn" type="button"><span aria-hidden="true">🏅</span> <span data-i18n="stickers">Sticker book</span></button>
+        <button id="openGrown" class="pill pill-btn hold-btn" type="button" aria-describedby="holdHint"><span class="hold-fill" aria-hidden="true"></span><span aria-hidden="true">🔒</span> <span data-i18n="grownUps">Grown-ups</span></button>
+        <span id="holdHint" class="sr-only" data-i18n="holdToOpen">Hold for 2 seconds</span>
+      </div>
+    </header>
+    <section id="tiles" class="tiles" aria-label="Games"></section>
+    <div class="hills-deco" aria-hidden="true"></div>
+  </main>
+
+  <!-- MAP: the levels of one game as a path -->
+  <section id="map" class="screen map" hidden aria-labelledby="mapTitle">
+    <header class="map-top">
+      <button id="mapBack" class="round-btn" type="button" aria-label="Back"><span aria-hidden="true">←</span></button>
+      <div class="map-title"><h1 id="mapTitle"></h1><p id="mapSub"></p></div>
+      <span id="mapPrep" class="pill prep-pill" hidden></span>
+      <button class="pill pill-btn music-toggle map-music" type="button" aria-pressed="true"><span class="music-icon" aria-hidden="true">🎵</span> <span class="music-label" data-i18n="musicOn">Music on</span></button>
+    </header>
+    <div class="map-stage" id="mapStage">
+      <svg class="map-path" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path id="mapPathLine" d="" /></svg>
+      <div id="mapNodes" class="map-nodes"></div>
+      <div id="mapDeco" class="map-deco" aria-hidden="true"></div>
+    </div>
+  </section>
+
+  <!-- GAME -->
+  <section id="gameView" class="game-view" hidden>
+    <div class="hud">
+      <button id="gExit" class="hud-btn" type="button" aria-label="Exit game">✕</button>
+      <div class="hud-title"><strong id="gTitle"></strong><span id="gLevel"></span></div>
+      <div class="hud-stats"><span id="gProgress"></span><span id="gTimer" class="num"></span></div>
+      <button class="hud-btn music-toggle" type="button" aria-pressed="true" aria-label="Music"><span class="music-icon" aria-hidden="true">🎵</span></button>
+      <button id="gPause" class="hud-btn" type="button" aria-label="Pause" hidden>❚❚</button>
+    </div>
+    <div id="stage" class="stage">
+      <canvas id="stageCanvas" aria-label="Game area"></canvas>
+      <canvas id="cam" class="cam" width="192" height="144" aria-label="Camera preview" hidden></canvas>
+      <div id="overlay" class="overlay" hidden></div>
+      <div id="toast" class="toast" role="status" hidden></div>
+    </div>
+    <div id="controls" class="controls" hidden></div>
+    <div id="rotate" class="rotate" role="alert">
+      <div class="rotate-phone" aria-hidden="true"></div>
+      <p data-i18n="rotate">Turn your device sideways to play</p>
+      <button id="rotateDismiss" class="btn btn-ghost-light" type="button"><span data-i18n="play">Play</span></button>
+    </div>
+  </section>
+
+  <!-- STICKER BOOK -->
+  <dialog id="stickers" class="sheet sticker-sheet" aria-labelledby="stTitle">
+    <div class="sheet-head"><h2 id="stTitle" data-i18n="stickers">Sticker book</h2><button class="round-btn light" type="button" data-close aria-label="Close">✕</button></div>
+    <p id="stCount" class="sheet-sub"></p>
+    <div id="stGrid" class="st-grid"></div>
+    <p class="sheet-hint" data-i18n="stickerHint">Finish a level with 2 or more stars to win its sticker.</p>
+  </dialog>
+
+  <!-- GROWN-UPS: sessions, reports, progress, any level, settings -->
+  <dialog id="grown" class="grown" aria-labelledby="grTitle">
+    <div class="gr-shell">
+      <header class="gr-head">
+        <h2 id="grTitle" data-i18n="grownUps">Grown-ups</h2>
+        <nav class="gr-tabs" role="tablist" aria-label="Grown-ups">
+          <button role="tab" id="tab-sessions" data-tab="sessions" aria-selected="true"><span data-i18n="tabSessions">Sessions</span></button>
+          <button role="tab" id="tab-progress" data-tab="progress" aria-selected="false"><span data-i18n="tabProgress">Progress</span></button>
+          <button role="tab" id="tab-levels" data-tab="levels" aria-selected="false"><span data-i18n="tabLevels">Choose a level</span></button>
+          <button role="tab" id="tab-settings" data-tab="settings" aria-selected="false"><span data-i18n="tabSettings">Settings</span></button>
+          <button role="tab" id="tab-about" data-tab="about" aria-selected="false"><span data-i18n="tabAbout">About</span></button>
+        </nav>
+        <button class="round-btn" type="button" data-close aria-label="Close">✕</button>
+      </header>
+      <div class="gr-body">
+        <section id="panel-sessions" class="gr-panel" role="tabpanel" aria-labelledby="tab-sessions"></section>
+        <section id="panel-progress" class="gr-panel" role="tabpanel" aria-labelledby="tab-progress" hidden></section>
+        <section id="panel-levels" class="gr-panel" role="tabpanel" aria-labelledby="tab-levels" hidden></section>
+        <section id="panel-settings" class="gr-panel" role="tabpanel" aria-labelledby="tab-settings" hidden>
+          <form id="settingsForm" class="settings-form">
+            <label for="setMode"><span data-i18n="inputMode">Input</span>
+              <select id="setMode">
+                <option value="auto" data-i18n="modeAuto">Automatic (sensors if available)</option>
+                <option value="sensors" data-i18n="modeSensors">Camera and microphone</option>
+                <option value="touch" data-i18n="modeTouch">Touch and grown-up taps</option>
+              </select></label>
+            <label for="setLang"><span data-i18n="language">Language</span>
+              <select id="setLang"><option value="en">English</option><option value="ur">اردو (Urdu)</option></select></label>
+            <label for="setGarden"><span data-i18n="gardenSound">Word Garden sound</span>
+              <select id="setGarden"><option value="all" data-i18n="allSounds">All sounds</option><option value="s">/s/ (sun)</option><option value="k">/k/ (cat)</option><option value="p">/p/ (pig)</option><option value="t">/t/ (tree)</option><option value="m">/m/ (moon)</option><option value="b">/b/ (ball)</option><option value="f">/f/ (fish)</option></select></label>
+            <fieldset class="checks">
+              <label class="check" for="setSound"><input id="setSound" type="checkbox"> <span data-i18n="soundFx">Sound effects</span></label>
+              <label class="check" for="setMusic"><input id="setMusic" type="checkbox"> <span data-i18n="music">Background music</span></label>
+              <label class="check" for="setVoice"><input id="setVoice" type="checkbox"> <span data-i18n="spoken">Spoken instructions</span></label>
+              <label class="check" for="setCam"><input id="setCam" type="checkbox"> <span data-i18n="cameraPreview">Show camera preview</span></label>
+              <label class="check" for="setOnlineSpeech"><input id="setOnlineSpeech" type="checkbox"> <span data-i18n="onlineSpeech">Allow online word check (Word Garden audio is sent to the browser's speech service)</span></label>
+              <label class="check" for="setWholeHand"><input id="setWholeHand" type="checkbox"> <span data-i18n="wholeHand">Hand games: use the whole hand (no single finger needed)</span></label>
+              <label class="check" for="setAdaptive"><input id="setAdaptive" type="checkbox"> <span data-i18n="adaptive">Automatic difficulty</span></label>
+              <label class="check" for="setUnlock"><input id="setUnlock" type="checkbox"> <span data-i18n="unlockAll">Open all levels</span></label>
+              <label class="check" for="setMotion"><input id="setMotion" type="checkbox"> <span data-i18n="reducedMotion">Less movement on screen</span></label>
+            </fieldset>
+            <div class="form-actions"><button class="btn btn-primary" type="submit"><span data-i18n="save">Save</span></button><span id="savedNote" class="saved-note" role="status"></span></div>
+          </form>
+        </section>
+        <section id="panel-about" class="gr-panel" role="tabpanel" aria-labelledby="tab-about" hidden></section>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- printable session report (only visible when printing) -->
+  <article id="printArea" class="print-area" aria-hidden="true"></article>
+</div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+# Render Blueprint: deploys LinguaLink Play as a small Node web service over HTTPS.
+# HTTPS is required for camera and microphone. No build step, no dependencies.
+services:
+  - type: web
+    name: lingualink-play
+    runtime: node
+    plan: free
+    buildCommand: "echo no build needed"
+    startCommand: node server.mjs
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Pages allowed to embed the games in an iframe (space separated), e.g. https://app.lingualink360.com
+      - key: FRAME_ANCESTORS
+        value: ""
