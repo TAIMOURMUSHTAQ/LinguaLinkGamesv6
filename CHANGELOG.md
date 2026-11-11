@@ -1,5 +1,30 @@
 # Changelog
 
+## 6.0.1 (2026-11-11)
+
+Fixes from the first test on the live site.
+
+### Fixed
+- **E and I were the same sound.** The games asked for E as "eee" and I as "iii", and held out those are one
+  sound, so saying "iiii" was heard as E. The five vowels are now A "aaa" (father), E "ehh" (egg), I "eee" (see),
+  O "ooo" (go), U "uuu" (moon), which are clearly different. Sky Glide heights from the bottom: U, O, A, E, I.
+- **Voice Painter jumped around.** A pitch reading that slips (an octave or far off) no longer moves the brush;
+  a real jump of the voice is followed once a few readings agree. The voice check uses steady readings only.
+- **The level card needed scrolling** to reach Start. It now has two columns on wider screens, and on phones the
+  Start button stays in view. The note about Word Garden recordings shows only on Word Garden.
+- Voice Painter's picture at the end of a drawing sits on a white circle.
+- **Word Garden, "Game listens":** the Correct button is gone, so a word only counts when the game hears it. A
+  grown-up who wants to judge the words chooses "Grown-up checks" on the level card.
+- **Camera games start much sooner:** the server sends the camera engine and models compressed (the engine
+  goes from 11 MB to under 3 MB), and the engine is fetched in the background a few seconds after the home
+  screen opens (not in touch mode or with data saver on).
+- **Balance Tray:** a fruit that falls off is replaced at once (0.3 s), also while the game waits for hands.
+  One hand can hold the tray on its own: the tray follows the tilt of that hand. "Show your hands" only shows
+  when no hand is in view.
+- **Finger Numbers and Air Letters track faster:** each game looks for only as many hands as it needs (the
+  hand model searches the whole picture on every frame until it has found that many). In Finger Numbers the
+  whole hand draws at once when the level's finger is not up, without a jump when the finger flickers.
+
 ## 6.0.0 (2026-11-11)
 
 Ten games, all five vowels, more face and tongue moves, and a new game for the pitch of the voice.

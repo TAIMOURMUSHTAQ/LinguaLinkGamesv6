@@ -10,7 +10,7 @@
 //   Brush keeps going: the brush moves on by itself, like music.
 // Sensor mode: microphone pitch (on the device, nothing is recorded). Touch mode: drag up and down,
 // the brush moves while the finger is down. Arrow keys work too.
-import { W, H, sky, label, clamp, lerp, glow, star, vignette, rr } from "../kit/draw.js";
+import { W, H, sky, label, clamp, lerp, glow, star, vignette, rr, emoji } from "../kit/draw.js";
 import { motes, twinkles } from "../kit/scene.js";
 import { clampScore } from "../kit/results.js";
 
@@ -62,6 +62,30 @@ export function heightForPitch(hz, centerHz, range) {
 export function pictureMatch(bins, tol) {
   if (!bins.length) return 0;
   return bins.filter((e) => e != null && e <= tol).length / bins.length;
+}
+
+// A steady reading of the voice, in semitones from the middle note. A pitch detector slips now and
+// then: a single reading an octave (or just far) away from the voice. Those are ignored: a reading
+// an octave off is folded back, a single far reading is dropped, and a real jump of the voice (steps,
+// a castle) is followed once a few readings in a row agree on it. A new sound after a pause starts
+// once two readings agree. Feed it each new reading; it returns the steady value, or null.
+export class PitchTrack {
+  constructor({ jump = 3, agree = 3, spread = 2 } = {}) { Object.assign(this, { jump, agree, spread }); this.reset(); }
+  reset() { this.est = null; this.cand = []; }
+  push(st) {
+    if (this.est != null) {
+      for (const k of [-12, 12]) if (Math.abs(st + k - this.est) <= 1.5) st += k;   // an octave slip
+      if (Math.abs(st - this.est) <= this.jump) { this.est += (st - this.est) * 0.6; this.cand = []; return this.est; }
+    }
+    this.cand.push(st);
+    if (this.cand.length > this.agree) this.cand.shift();
+    const need = this.est == null ? 2 : this.agree;
+    if (this.cand.length >= need) {
+      const c = this.cand.slice(-need);
+      if (Math.max(...c) - Math.min(...c) <= this.spread) { this.est = [...c].sort((a, b) => a - b)[c.length >> 1]; this.cand = []; }
+    }
+    return this.est;
+  }
 }
 
 export function scorePitch(matches, total) {
@@ -161,6 +185,7 @@ const def = {
       lowHz: null, highHz: null,
       revealT: 0,
       range: L.range, tol: L.tol,
+      track: new PitchTrack(), pushT: 0, quietRun: 0,
     };
     if (reuse) ctx.event("voice_check_reused", { center_hz: Math.round(g.center) });
     // Easier after 2 pictures painted poorly: a wider band and a smaller range of notes needed.
@@ -199,7 +224,7 @@ const def = {
       if (g.phase === "check") {
         // the clock waits while the game itself speaks
         if (mic && mic.selfSound) { g.phaseT -= dt; return; }
-        if (mic && mic.periodic && mic.pitchHz) g.checkHz.push(mic.pitchHz);
+        if (mic && mic.periodic && mic.steadyVoice && mic.pitchHz) g.checkHz.push(mic.pitchHz);
         if (g.phaseT > CHECK_SEC || g.checkHz.length >= CHECK_MIN * 3) {
           if (g.checkHz.length >= CHECK_MIN) {
             const s = [...g.checkHz].sort((a, b) => a - b);
@@ -234,17 +259,29 @@ const def = {
       if (sensors) {
         const voice = (mic.voiced || mic.speech) && !mic.selfSound;
         if (voice && mic.periodic && mic.pitchHz) {
-          on = true; want = heightForPitch(mic.pitchHz, g.center, g.range);
-          g.lowHz = g.lowHz == null ? mic.pitchHz : Math.min(g.lowHz, mic.pitchHz);
-          g.highHz = g.highHz == null ? mic.pitchHz : Math.max(g.highHz, mic.pitchHz);
-        } else if (voice && !mic.selfSound) g.whisperT += dt;
+          g.quietRun = 0;
+          // one reading every 50 ms, as often as the microphone measures the pitch
+          g.pushT += dt;
+          if (g.pushT >= 0.045 || g.track.est == null) { g.pushT = 0; g.track.push(12 * Math.log2(mic.pitchHz / g.center)); }
+          const st = g.track.est;
+          if (st != null) {
+            on = true; want = clamp(0.5 + st / (2 * g.range), 0, 1);
+            const hz = g.center * Math.pow(2, st / 12);   // the steady pitch, not a slipped reading
+            g.lowHz = g.lowHz == null ? hz : Math.min(g.lowHz, hz);
+            g.highHz = g.highHz == null ? hz : Math.max(g.highHz, hz);
+          }
+        } else {
+          if (voice && !mic.selfSound) g.whisperT += dt;
+          // a pause: the next sound may start anywhere
+          g.quietRun += dt; if (g.quietRun > 0.35) g.track.reset();
+        }
       } else {
         if (ctx.keys.has("ArrowUp")) g.touchH = clamp((g.touchH ?? g.brushH) + dt * 0.8, 0, 1);
         if (ctx.keys.has("ArrowDown")) g.touchH = clamp((g.touchH ?? g.brushH) - dt * 0.8, 0, 1);
         on = ctx.pointer.down || ctx.keys.has("ArrowUp") || ctx.keys.has("ArrowDown") || ctx.keys.has(" ") || ctx.keys.has("ArrowRight");
         want = g.touchH ?? g.brushH;
       }
-      if (want != null) g.brushH = lerp(g.brushH, want, Math.min(1, dt * 12));
+      if (want != null) g.brushH = lerp(g.brushH, want, Math.min(1, dt * 9));
       g.on = on;
       if (on) { g.voiceT += dt; g.silentT = 0; } else g.silentT += dt;
       if (on || flow) g.p = Math.min(1, g.p + dt / L.sec);
@@ -305,8 +342,11 @@ const def = {
         label(c, ctx.t("pitchGetReady"), W / 2, H / 2, { size: 54, color: "#5a46c8", shadow: false, weight: 800 });
       } else if (g.phase === "reveal") {
         const k = clamp(g.phaseT / 0.5, 0, 1);
-        c.save(); c.translate(W / 2, H / 2); c.scale(0.4 + k * 0.8, 0.4 + k * 0.8);
-        label(c, pic.emoji, 0, 0, { size: 160, shadow: false }); c.restore();
+        // the picture pops up on a white circle
+        const sz = Math.round(48 + k * 72);
+        c.save(); c.fillStyle = "rgba(255,255,255,0.92)"; c.shadowColor = "rgba(0,0,0,0.2)"; c.shadowBlur = 24;
+        c.beginPath(); c.arc(W / 2, H / 2, sz * 0.85, 0, Math.PI * 2); c.fill(); c.restore();
+        emoji(c, pic.emoji, W / 2, H / 2, sz);
       } else if (g.phase === "check") {
         c.save(); c.fillStyle = "rgba(20,20,50,0.55)"; c.fillRect(0, 0, W, H); c.restore();
         label(c, ctx.t("pitchCheck"), W / 2, H / 2 - 60, { size: 44, weight: 800 });

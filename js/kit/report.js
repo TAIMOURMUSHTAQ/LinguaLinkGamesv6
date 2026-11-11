@@ -5,7 +5,7 @@ import { t } from "./i18n.js";
 const r1 = (x) => Math.round(x * 10) / 10;
 // Time is always shown in whole seconds: 1 s or 2 s, never 1.5 s.
 const sec = (x) => Math.max(0, Math.round(x || 0));
-const LETTER = { aah: "A", eee: "E", iii: "I", ooo: "O", uuu: "U" };
+const LETTER = { aah: "A", ehh: "E", eee: "I", ooo: "O", uuu: "U" };
 const MOUTH_KEYS = { open: "openWide", wide: "openWider", smile: "smile", kiss: "kiss", oh: "ohShape", puff: "puff", side: "lipsSide", jaw: "jawSide", lipsIn: "lipsIn", surprised: "surprisedFace", sad: "sadFace", cross: "crossFace" };
 
 export function describe(result) {
@@ -15,14 +15,14 @@ export function describe(result) {
     case "breeze":
       out.push(t("r_breeze_rounds", { done: m.rounds_completed, total: m.rounds_total }));
       out.push(t("r_breeze_hold", { s: sec(m.longest_hold_sec), t: m.target_hold_sec }));
-      if (m.by_sound) { const got = ["aah", "eee", "iii", "ooo", "uuu"].filter((v) => m.by_sound[v] && m.by_sound[v].done).map((v) => LETTER[v]); if (got.length) out.push(t("r_vowels_done", { list: got.join(", ") })); }
+      if (m.by_sound) { const got = ["aah", "ehh", "eee", "ooo", "uuu"].filter((v) => m.by_sound[v] && m.by_sound[v].done).map((v) => LETTER[v]); if (got.length) out.push(t("r_vowels_done", { list: got.join(", ") })); }
       if (m.target_sound_pct != null) out.push(t("r_breeze_target", { p: m.target_sound_pct }));
       if (m.voice_breaks) out.push(t("r_breeze_breaks", { n: m.voice_breaks }));
       if (m.steady_voice_pct != null) out.push(t("r_breeze_steady", { p: m.steady_voice_pct }));
       break;
     case "glide":
       out.push(t("r_glide_rings", { hit: m.rings_hit, total: m.rings_total, p: m.accuracy_pct }));
-      if (m.by_vowel) { const list = ["aah", "eee", "iii", "ooo", "uuu"].filter((v) => m.by_vowel[v]).map((v) => `${LETTER[v]} ${m.by_vowel[v].hit}/${m.by_vowel[v].total}`); if (list.length) out.push(t("r_glide_vowels", { list: list.join(", ") })); }
+      if (m.by_vowel) { const list = ["aah", "ehh", "eee", "ooo", "uuu"].filter((v) => m.by_vowel[v]).map((v) => `${LETTER[v]} ${m.by_vowel[v].hit}/${m.by_vowel[v].total}`); if (list.length) out.push(t("r_glide_vowels", { list: list.join(", ") })); }
       if (m.right_sound_pct != null) out.push(t("r_glide_right", { p: m.right_sound_pct }));
       if (m.avg_response_ms != null) out.push(t("r_glide_response", { s: Math.max(1, sec(m.avg_response_ms / 1000)) }));
       if (m.personal_voice_check === false) out.push(t("r_glide_nocheck"));

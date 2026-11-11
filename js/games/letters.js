@@ -81,6 +81,7 @@ const def = {
   color: "#00b4d8",
   focus: "Write the alphabet in the air with your hand",
   input: "hands",
+  maxHands: 1,
   inputLabel: "Camera (your hand, stays on this device)",
   touchLabel: "Drag a finger along the letter",
   skills: ["The alphabet", "Letter shapes", "Letter sounds", "Big arm moves"],

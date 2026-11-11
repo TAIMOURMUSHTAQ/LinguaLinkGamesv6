@@ -189,7 +189,9 @@ async function loadLib() {
 async function fetchBytes(url, expected, onBytes) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${r.status} ${url}`);
-  const total = +r.headers.get("content-length") || expected;
+  // A compressed download reports its compressed length, but the bytes counted here are the
+  // unpacked ones, so then the known unpacked size measures the progress.
+  const total = r.headers.get("content-encoding") ? expected : +r.headers.get("content-length") || expected;
   if (!r.body || !r.body.getReader) { const b = new Uint8Array(await r.arrayBuffer()); onBytes(b.length, total); return b; }
   const reader = r.body.getReader();
   const parts = [];
@@ -214,6 +216,14 @@ async function modelBytes(kind, modelBase, onBytes) {
   catch { return fetchBytes(MODELS[kind].url, MODELS[kind].size, onBytes); }
 }
 
+// Fetch the camera engine (shared by every camera game) into the browser's cache ahead of time, so
+// the first camera game only has to load its own model. Quietly does nothing if it fails.
+export function warmEngine() {
+  if (shared.engineWarm || shared.fileset) return shared.engineWarm;
+  shared.engineWarm = Promise.all([fetch(`${WASM_LOCAL}/vision_wasm_internal.wasm`).then((r) => r.arrayBuffer()), loadLib()]).catch(() => { shared.engineWarm = null; });
+  return shared.engineWarm;
+}
+
 // Load (once) the tracking model for "face", "hands" or "pose". Safe to call many times.
 export function preload(kind, { modelBase = null } = {}) {
   if (shared.tasks[kind]) return Promise.resolve(shared.tasks[kind]);
@@ -235,6 +245,7 @@ export function preload(kind, { modelBase = null } = {}) {
       const baseOptions = { modelAssetBuffer: bytes, delegate };
       if (kind === "face") return FaceLandmarker.createFromOptions(shared.fileset, { baseOptions, runningMode: "VIDEO", numFaces: 1, outputFaceBlendshapes: true, minFaceDetectionConfidence: conf, minFacePresenceConfidence: conf, minTrackingConfidence: conf });
       if (kind === "pose") return PoseLandmarker.createFromOptions(shared.fileset, { baseOptions, runningMode: "VIDEO", numPoses: 1, minPoseDetectionConfidence: conf, minPosePresenceConfidence: conf, minTrackingConfidence: conf });
+      shared.numHands = 2;
       return HandLandmarker.createFromOptions(shared.fileset, { baseOptions, runningMode: "VIDEO", numHands: 2, minHandDetectionConfidence: conf, minHandPresenceConfidence: conf, minTrackingConfidence: conf });
     };
     let task;
@@ -252,8 +263,12 @@ export function loadProgress(kind) { return shared.progress[kind] || 0; }
 
 // ---------- live tracker ----------
 export class Tracker {
-  constructor(kind, { modelBase = null, onProgress = () => {} } = {}) {
+  // maxHands: how many hands to look for. The hand model searches the whole picture again on every
+  // frame until it has found that many hands, so a game that needs one hand asks for one: the
+  // tracking is then about twice as quick, above all on a laptop without graphics acceleration.
+  constructor(kind, { modelBase = null, onProgress = () => {}, maxHands = 2 } = {}) {
     this.kind = kind;            // "face" | "hands" | "pose"
+    this.maxHands = maxHands;
     this.modelBase = modelBase;
     this.onProgress = onProgress;
     this.ready = false;
@@ -290,6 +305,10 @@ export class Tracker {
       await this.video.play();
       this.onProgress(loadProgress(this.kind));
       this.task = await modelP;
+      // the model is shared by every hand game, so each game sets its own number of hands
+      if (this.kind === "hands" && shared.numHands !== this.maxHands && this.task.setOptions) {
+        try { await this.task.setOptions({ numHands: this.maxHands }); shared.numHands = this.maxHands; } catch {}
+      }
       if (isCancelled()) { this.stop(); throw new Error("cancelled"); }
       this.ready = true;
     } finally { off(); }
@@ -335,6 +354,7 @@ export class Tracker {
         const h = {
           hand: realHand(label),
           palm: { x: 1 - lm[9].x, y: lm[9].y },
+          knuckles: [{ x: 1 - lm[5].x, y: lm[5].y }, { x: 1 - lm[17].x, y: lm[17].y }],   // its tilt, for one-hand play
           tips: [4, 8, 12, 16, 20].map((k) => ({ x: 1 - lm[k].x, y: lm[k].y })),
           fingers, count: fingers.filter(Boolean).length,
         };

@@ -41,7 +41,7 @@ Mark each line Pass or Fail, and note the device, browser and anything odd. Use 
 |---|---|---|---|
 | 2.1 | First level asks for A, E, I, O and U in turn; staying silent asks once more | | |
 | 2.2 | The next Sky Glide (or Balloon Breeze) level reuses the voice check from earlier | | |
-| 2.3 | Each vowel flies the bird to its own height (U lowest, then O, A, I, E); silence glides straight | | |
+| 2.3 | Each vowel flies the bird to its own height (U lowest, then O, A, E, I); silence glides straight. E is "ehh" (egg), I is "eee" (see): check they are never mixed up | | |
 | 2.4 | A quiet voice still moves the bird; a whisper never sends it to the top or bottom | | |
 | 2.5 | Keep flying: rings keep coming and the next sound is shown | | |
 | 2.6 | Stop and say: the bird stops before each ring and asks for the sound; it goes on once at the right height | | |

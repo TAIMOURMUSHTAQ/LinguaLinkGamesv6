@@ -25,13 +25,21 @@ const MAX_TILT = 38;
 const INK = "#5a3d1e";     // text on the pale sky
 const READY_SEC = 1.2;     // "hold the tray level" before a round
 const PAUSE_SEC = 1.6;     // the round's result before the next one
-const REFILL_SEC = 0.6;    // a fruit that fell off is replaced this quickly
+const REFILL_SEC = 0.3;    // a fruit that fell off is replaced this quickly
 const LOST_HAND_SEC = 1.2; // one hand missing: its last place is used for this long
 const MAX_GAP_SEC = 2.5;   // most time between two fruits
 
 // Tilt from the two hands, in degrees. Positive means the right side is lower.
 export function tiltFromHands(left, right) {
   return (Math.atan2(right.y - left.y, Math.max(1e-3, right.x - left.x)) * 180) / Math.PI;
+}
+
+// One hand alone holds the tray too (only one hand in view, or a child who uses one hand): the tray
+// follows the tilt of the hand, the line across its knuckles from the pointer to the little finger.
+export function tiltFromOneHand(hand) {
+  if (!hand || !hand.knuckles) return 0;
+  const [a, b] = hand.knuckles;
+  return a.x <= b.x ? tiltFromHands(a, b) : tiltFromHands(b, a);
 }
 
 // How far the load pulls the tray over, in degrees: heavier and further from the middle pulls more.
@@ -100,7 +108,7 @@ const def = {
   touchLabel: "Drag up or down on the left or right side to lift that side, or use the arrow keys",
   skills: ["Two hands together", "Balance", "Steady arms"],
   howTo: [
-    ["🙌", "Hold up both hands to the camera, as if holding a tray."],
+    ["🙌", "Hold up both hands to the camera, as if holding a tray. One hand works too: tilt it like a tray."],
     ["🍎", "Fruit falls onto the tray. Keep the tray level so nothing slides off."],
     ["⬆️", "If one side goes down, lift that hand."],
     ["📏", "On later levels, keep the tray on the moving line."],
@@ -128,7 +136,7 @@ const def = {
       steadyT: 0, playT: 0, curSteady: 0, bestSteady: 0,
       tiltSum: 0, tiltAbs: 0, tiltN: 0,
       heightErr: 0, heightN: 0,
-      sawHands: false, handsMissing: 0, lastHands: null, oneHandT: 0, refill: [],
+      sawHands: false, handsMissing: 0, lastHands: null, oneHandT: 0, refill: [], oneHandPlayT: 0, single: false,
       tol: L.tol,
       touchL: 430, touchR: 430,
       pop: 0,
@@ -180,8 +188,18 @@ const def = {
           g.oneHandT += dt;
           const h = hands[0].palm, [la, lb] = g.lastHands;
           pair = Math.abs(h.x - la.x) < Math.abs(h.x - lb.x) ? [h, lb] : [la, h];
+        } else if (hands.length === 1) {
+          // Only one hand for longer: that hand holds the tray on its own and tilts it.
+          g.oneHandT += dt; g.oneHandPlayT += dt;
+          const h = hands[0];
+          g.sawHands = true; g.handsMissing = 0; g.lastHands = null; g.single = true;
+          g.handTilt = lerp(g.handTilt, tiltFromOneHand(h), Math.min(1, dt * 10));
+          g.trayY = lerp(g.trayY, clamp(h.palm.y * H, 180, 640), Math.min(1, dt * 10));
+          g.handsPos = [{ x: h.palm.x * W, y: h.palm.y * H }];
+          return;
         }
         if (pair) {
+          g.single = false;
           const [a, b] = pair;
           g.sawHands = true; g.handsMissing = 0; g.lastHands = [{ x: a.x, y: a.y }, { x: b.x, y: b.y }];
           g.handTilt = lerp(g.handTilt, tiltFromHands(a, b), Math.min(1, dt * 12));
@@ -216,8 +234,17 @@ const def = {
         }
         return;
       }
-      // no hands in view: everything waits, so the game never punishes the camera
-      if (sensors && g.handsMissing > 0.6) return;
+      // no hands in view: the round waits, so the game never punishes the camera. A fruit that fell
+      // is still replaced and falling fruit still lands, so the tray is ready when the hands come back.
+      if (sensors && g.handsMissing > 0.6) {
+        for (const r of g.refill) r.t -= dt;
+        while (g.refill.length && g.refill[0].t <= 0) { g.refill.shift(); dropFruit(true); }
+        for (const it of g.items) {
+          if (it.off) it.dropY = (it.dropY || 0) + dt * 620;
+          else if (it.fall > 0) it.fall = Math.max(0, it.fall - dt * 1.6);
+        }
+        return;
+      }
 
       g.roundT += dt; g.playT += dt;
       const level = Math.abs(g.tilt) <= g.tol;
@@ -308,6 +335,7 @@ const def = {
         settings: { tolerance_deg: L.tol },
         metrics: {
           steady_pct: steadyPct,
+          one_hand_pct: sensors && g.playT > 1 ? Math.round(Math.min(1, g.oneHandPlayT / g.playT) * 100) : null,
           tilt_tolerance_deg: L.tol,
           mean_tilt_deg: g.tiltN ? Math.round((g.tiltAbs / g.tiltN) * 10) / 10 : null,
           items_kept: g.kept,

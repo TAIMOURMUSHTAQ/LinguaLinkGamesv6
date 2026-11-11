@@ -1,6 +1,6 @@
 {
   "name": "lingualink-play",
-  "version": "6.0.0",
+  "version": "6.0.1",
   "private": true,
   "type": "module",
   "description": "LinguaLink360 therapy games: speech, voice, oral-motor and motor practice in the browser (static ES modules, no build step).",

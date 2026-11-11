@@ -1,13 +1,13 @@
 // The voice check shared by the vowel games (Balloon Breeze and Sky Glide). The child says each vowel
-// for a moment: A "aaa", E "eee", I "iii", O "ooo", U "uuu". The game learns the child's own five
+// for a moment: A "aaa", E "ehh", I "eee", O "ooo", U "uuu". The game learns the child's own five
 // sounds, so it can tell them apart even when the child's "a" and "e" are not the textbook ones.
 // It runs once per visit and every vowel level reuses it. Nothing is recorded: only ten numbers
 // (two resonances per vowel) are kept, in memory.
 import { W, H, label, ring, rr, clamp } from "./draw.js";
 import { makeVowelAnchors } from "./vowel.js";
 
-export const CHECK_ORDER = ["aah", "eee", "iii", "ooo", "uuu"];
-export const VOWEL_LETTER = { aah: "A", eee: "E", iii: "I", ooo: "O", uuu: "U" };
+export const CHECK_ORDER = ["aah", "ehh", "eee", "ooo", "uuu"];
+export const VOWEL_LETTER = { aah: "A", ehh: "E", eee: "I", ooo: "O", uuu: "U" };
 const SEC = 2.6;          // most time for one vowel
 const ENOUGH = 16;        // samples that are plenty: move on early
 const MIN_SEC = 1.2;

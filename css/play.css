@@ -240,6 +240,22 @@ button { font: inherit; color: inherit; }
 .ov-howto li { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: center; font-size: 15px; line-height: 1.35; }
 .ov-howto .h-icon { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); font-size: 19px; box-shadow: 0 2px 0 color-mix(in srgb, var(--game) 45%, transparent); }
 .ov-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 6px; }
+/* The level card: one column on phones with Start always in reach, two columns on wider screens so the
+   whole card (and Start) fits without scrolling. */
+.ov-cols { display: grid; gap: 12px; }
+.ov-col { display: grid; gap: 12px; align-content: start; }
+.ov-intro .ov-actions { position: sticky; bottom: -22px; margin: 6px -28px -22px; padding: 12px 28px 18px; background: var(--surface); border-radius: 0 0 28px 28px; z-index: 2; box-shadow: 0 -10px 18px -12px rgba(0,0,0,.35); }
+@media (min-width: 900px) {
+  .ov-intro { width: min(1000px, 100%); }
+  .ov-intro .ov-cols { grid-template-columns: 1.15fr 1fr; align-items: start; text-align: start; }
+  .ov-intro .ov-goal { font-size: 18px; }
+  .ov-intro .ov-actions { position: static; margin: 4px 0 0; padding: 0; background: none; box-shadow: none; justify-content: flex-start; }
+}
+@media (max-height: 760px) and (min-width: 900px) {
+  .ov-intro { padding-top: 30px; gap: 8px; }
+  .ov-intro h2 { font-size: 30px; }
+  .ov-howto li { font-size: 14px; }
+}
 .ov-actions .btn { padding: 12px 24px; font-size: 16px; }
 .ov-actions .btn-big { padding: 14px 30px; font-size: 19px; }
 .ov-loading h2 { font-size: 30px; }
@@ -414,6 +430,7 @@ dialog::backdrop { background: rgba(11,13,38,.6); backdrop-filter: blur(3px); }
 @media (max-width: 560px) {
   .hud-title strong { font-size: 18px; }
   .ov-card { padding: 22px 16px; border-radius: 22px; }
+  .ov-intro .ov-actions { margin: 6px -16px -22px; padding: 12px 16px 16px; border-radius: 0 0 22px 22px; }
   .ov-card h2 { font-size: 28px; }
   .ov-meta li { grid-template-columns: 1fr; gap: 0; }
   .cam { width: 112px; height: 84px; }

@@ -6,10 +6,10 @@ import { setSoundEnabled, setMusicEnabled, setVoicePrompts, unlock, startMusic, 
 import { history, clearHistory, listenForAcks, flushOutbox } from "./kit/results.js";
 import { getProgress, isUnlocked, currentLevel, totalStars, clearProgress, STICKERS, STICKER_TOTAL } from "./kit/progress.js";
 import { describe, perRound, formatDuration, progressByLevel } from "./kit/report.js";
-import { preload, onLoadProgress, isLoaded } from "./kit/vision.js";
+import { preload, onLoadProgress, isLoaded, warmEngine } from "./kit/vision.js";
 import { W, H } from "./kit/draw.js";
 
-const VERSION = "6.0.0";
+const VERSION = "6.0.1";
 const cfg = getConfig();
 let runner = null;
 let GAMES = [], byId = {};
@@ -190,6 +190,10 @@ function showHome({ push = true, replace = false } = {}) {
   showScreen("home", { push: push && !replace });
   if (replace) { try { window.history.replaceState({ screen: "home" }, ""); } catch {} }
   startMusic("hub");
+  // a few seconds after the home screen opens, fetch the camera engine in the background (not in
+  // touch mode, and not when the device asks to save data)
+  const saveData = typeof navigator !== "undefined" && navigator.connection && navigator.connection.saveData;
+  if (cfg.mode !== "touch" && !saveData) setTimeout(() => { if (!runner) warmEngine(); }, 3000);
 }
 
 // ---------- level map ----------

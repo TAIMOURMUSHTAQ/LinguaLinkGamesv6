@@ -69,8 +69,8 @@ test("Sky Glide ring patterns: all five vowels on every level", () => {
     assert.equal(v.length, lv.count);
     assert.equal(new Set(v).size, 5, `${lv.name} uses all five vowels`);
   });
-  assert.deepEqual(ringVowels("pairs", 4), ["aah", "aah", "eee", "eee"]);
-  assert.deepEqual(LANES, ["uuu", "ooo", "aah", "iii", "eee"]);
+  assert.deepEqual(ringVowels("pairs", 4), ["aah", "aah", "ehh", "ehh"]);
+  assert.deepEqual(LANES, ["uuu", "ooo", "aah", "ehh", "eee"]);
   assert.equal(scoreGlide({ hits: 6, total: 8 }), 75);
 });
 

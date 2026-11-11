@@ -9,9 +9,9 @@ import { W, H, sky, clamp, glow, rr, label, ease } from "../kit/draw.js";
 import { createTraceGame, airToScreen, closestHand } from "../kit/tracegame.js";
 import { handPoint } from "../kit/vision.js";
 
-// If the level's finger is not seen for this long while a hand is in view, any finger or the whole
-// hand draws instead: not every child can hold up each finger.
-export const FALLBACK_AFTER = 2;
+// The level's finger draws when it is up. When it is not (not every child can hold up each finger),
+// the whole hand draws at once: the middle of the hand is followed.
+export const FALLBACK_AFTER = 0;
 import { nebula, twinkles, shootingStar, planet } from "../kit/scene.js";
 
 export const FINGERS = ["thumb", "index", "middle", "ring", "little"];
@@ -76,6 +76,7 @@ const def = {
   color: "#7209b7",
   focus: "Write numbers with one finger and count on your fingers",
   input: "hands",
+  maxHands: (level) => (level.finger == null ? 2 : 1),
   inputLabel: "Camera (your finger, stays on this device)",
   touchLabel: "Drag a finger along the number; the adult confirms finger counting",
   skills: ["One finger at a time", "Number shapes", "Counting"],
@@ -107,19 +108,25 @@ const def = {
         if (!hands.length) return null;
         if (L.finger == null) return null;
         const v = cx.tracker.video, aspect = v && v.videoWidth && v.videoHeight ? v.videoWidth / v.videoHeight : 4 / 3;
-        // The chosen finger draws. If it is not seen for a while (or a grown-up chose the whole
-        // hand), any straight finger, or else the whole hand, draws instead.
+        // The chosen finger draws when it is up. When it is not, the whole hand draws at once (the
+        // middle of the hand). Switching waits a moment each way, so a finger that flickers up and
+        // down does not make the line jump between the fingertip and the hand.
         const ready = hands.filter((x) => x.fingers[L.finger]);
         const now = cx.time;
-        if (ready.length) g.fingerSeenAt = now;
-        if (g.fingerSeenAt == null) g.fingerSeenAt = now;
-        const fallback = cx.config.wholeHand || (!ready.length && now - g.fingerSeenAt > FALLBACK_AFTER);
-        if (fallback) {
-          const h = closestHand(hands, g.cursor, (x) => x);
-          const p = handPoint(h, L.finger, !!cx.config.wholeHand);
+        if (g.usePalm == null) g.usePalm = false;
+        if (ready.length) { g.fingerUpT = (g.fingerUpT || 0) + (now - (g.lastNow ?? now)); g.fingerDownT = 0; }
+        else { g.fingerDownT = (g.fingerDownT || 0) + (now - (g.lastNow ?? now)); g.fingerUpT = 0; }
+        g.lastNow = now;
+        if (cx.config.wholeHand) g.usePalm = true;
+        else if (!g.usePalm && !ready.length && g.fingerDownT > 0.25) g.usePalm = true;
+        else if (g.usePalm && ready.length && g.fingerUpT > 0.4) g.usePalm = false;
+        if (g.usePalm) {
+          const h = closestHand(hands, g.cursor, (x) => x.palm);
+          const p = handPoint(h, L.finger, true);   // the middle of the hand
           return { ...airToScreen(p, g.gain, aspect), hand: h.hand, ok: true, isolated: false, other: true, note: cx.config.wholeHand ? null : cx.t("anyFingerOk") };
         }
-        if (!ready.length) return { ok: false, hint: cx.t("useFinger", { f: cx.t("finger_" + FINGERS[L.finger]) }) };
+        // the finger just went down: a moment of no point (the pen does not lift that quickly)
+        if (!ready.length) return { ok: false };
         const h = closestHand(ready, g.cursor, (x) => x.tips[L.finger]);
         return { ...airToScreen(h.tips[L.finger], g.gain, aspect), hand: h.hand, ok: true, isolated: h.count === 1 };
       },

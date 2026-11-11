@@ -184,12 +184,12 @@ test("Time is shown in whole seconds", () => {
 test("Voice check: a wrong or repeated sound cannot spoil recognition", async () => {
   const V = await import("../js/kit/vowel.js");
   const mk = (f1, f2) => Array.from({ length: 12 }, (_, i) => [f1 * (1 + ((i % 5) - 2) * 0.02), f2 * (1 + ((i % 3) - 1) * 0.02)]);
-  const child = { aah: [1030, 1370], eee: [370, 3200], iii: [530, 2730], ooo: [620, 1100], uuu: [430, 1170] };
+  const child = { aah: [1030, 1370], eee: [370, 3200], ehh: [690, 2400], ooo: [620, 1100], uuu: [430, 1170] };
   const all = (f) => Object.fromEntries(Object.keys(child).map((v) => [v, mk(...f)]));
   assert.equal(V.makeVowelAnchors(all(child.eee)), null, "one sound for every prompt: the built-in sounds are used");
   assert.equal(V.makeVowelAnchors(all(child.aah)), null);
   const swapped = V.makeVowelAnchors({ ...Object.fromEntries(Object.entries(child).map(([v, f]) => [v, mk(...f)])), aah: mk(...child.eee) });
   assert.ok(swapped && !swapped.aah && swapped.eee, "an eee said for A is not learned as A");
   const good = V.makeVowelAnchors(Object.fromEntries(Object.entries(child).map(([v, f]) => [v, mk(...f)])));
-  assert.deepEqual(Object.keys(good).sort(), ["aah", "eee", "iii", "ooo", "uuu"], "a normal check keeps all five");
+  assert.deepEqual(Object.keys(good).sort(), ["aah", "eee", "ehh", "ooo", "uuu"], "a normal check keeps all five");
 });

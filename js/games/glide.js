@@ -1,5 +1,5 @@
 // SKY GLIDE: steer a bird with the five vowels. Each vowel has its own height, ordered like the mouth
-// shapes from back to front: U "uuu" at the bottom, then O "ooo", A "aaa", I "iii", and E "eee" at the
+// shapes from back to front: U "uuu" at the bottom, then O "ooo", A "aaa", E "ehh", and I "eee" at the
 // top. Each ring shows a letter: say that sound and the bird flies to its height. Silence glides
 // straight. Quiet voices and whispers count too. The voice check (shared with Balloon Breeze) learns
 // the child's own five vowels first; it runs once per visit and every level reuses it.
@@ -27,15 +27,15 @@ const TOP = 120, BOTTOM = 620; // flying band in screen pixels
 const BIRD_X = 320;
 const RATE = 0.7;              // band heights per second the bird can climb or dive
 const WAIT_LIMIT = 15;         // Stop and say: seconds before moving on from one ring
-export const LANES = ["uuu", "ooo", "aah", "iii", "eee"];   // bottom to top
+export const LANES = ["uuu", "ooo", "aah", "ehh", "eee"];   // bottom to top
 export { forgetVowels as resetCalibration };
 
 // The vowel of every ring in a level. Deterministic, so sessions can be compared.
 export function ringVowels(order, count) {
-  const f = ["aah", "eee", "iii", "ooo", "uuu"];
-  const wave = ["uuu", "ooo", "aah", "iii", "eee", "iii", "aah", "ooo"];
-  const mixed = ["aah", "uuu", "eee", "ooo", "iii", "aah", "eee", "uuu", "iii", "ooo"];
-  const mixed2 = ["eee", "uuu", "iii", "aah", "ooo", "eee", "aah", "uuu", "ooo", "iii", "aah", "eee"];
+  const f = ["aah", "ehh", "eee", "ooo", "uuu"];
+  const wave = ["uuu", "ooo", "aah", "ehh", "eee", "ehh", "aah", "ooo"];
+  const mixed = ["aah", "uuu", "eee", "ooo", "ehh", "aah", "eee", "uuu", "ehh", "ooo"];
+  const mixed2 = ["eee", "uuu", "ehh", "aah", "ooo", "eee", "aah", "uuu", "ooo", "ehh", "aah", "eee"];
   return Array.from({ length: count }, (_, i) => {
     if (order === "pairs") return f[Math.floor(i / 2) % 5];
     if (order === "steps") return f[i % 5];
@@ -52,7 +52,7 @@ export function scoreGlide({ hits, total }) {
   return clampScore((hits / total) * 100);
 }
 
-const VOWEL_COLOR = { aah: "#ff7aa2", eee: "#ffc94a", iii: "#7bd389", ooo: "#7ab8ff", uuu: "#c49bff" };
+const VOWEL_COLOR = { aah: "#ff7aa2", eee: "#ffc94a", ehh: "#7bd389", ooo: "#7ab8ff", uuu: "#c49bff" };
 
 const yOf = (h) => lerp(BOTTOM, TOP, h);
 
@@ -345,7 +345,7 @@ const def = {
         // shown to the child: counts and whole seconds only
         summary: [
           { label: ctx.t("rings"), value: `${g.hits}/${L.count}` },
-          { label: ctx.t("soundsDone"), value: ["aah", "eee", "iii", "ooo", "uuu"].filter((v) => g.byVowel[v] && g.byVowel[v].hit).map((v) => VOWEL_LETTER[v]).join(" ") || "–" },
+          { label: ctx.t("soundsDone"), value: ["aah", "ehh", "eee", "ooo", "uuu"].filter((v) => g.byVowel[v] && g.byVowel[v].hit).map((v) => VOWEL_LETTER[v]).join(" ") || "–" },
           ...(avgResp != null ? [{ label: ctx.t("responseTime"), value: `${Math.max(1, Math.round(avgResp / 1000))} s` }] : []),
         ],
       };

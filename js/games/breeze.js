@@ -1,5 +1,5 @@
 // BALLOON BREEZE: hold a vowel to blow up the balloon. The child holds the sound shown (A "aaa",
-// E "eee", I "iii", O "ooo", U "uuu") and the balloon blows up step by step. Only the sound asked for
+// E "ehh", I "eee", O "ooo", U "uuu") and the balloon blows up step by step. Only the sound asked for
 // counts: other sounds, noise, claps, hissing or whispering do nothing, and the game says which sound
 // it wants. Every level uses all five vowels. Holds are 5, 10, 15, 20 and 25 seconds, level by level;
 // the child may take a breath, and the balloon waits. Later levels ask for a closer match.
@@ -14,11 +14,11 @@ import { createVowelCheck, savedVowels, VOWEL_LETTER } from "../kit/vowelcheck.j
 // lenience: 1 accepts close neighbours (ooo for uuu), 0 needs a clear match. It tightens level by level.
 // target: seconds of the sound for each balloon: 5, 10, 15, 20, 25.
 export const LEVELS = [
-  { name: "First Puffs", goal: "Say A, E, I, O and U. Each sound for 5 seconds to blow up the balloon.", target: 5, rounds: 5, continuous: false, steadyTol: null, lenience: 1, sounds: ["aah", "eee", "iii", "ooo", "uuu"], settings: { target_sec: 5, rounds: 5, lenience: 1 } },
-  { name: "Bigger Balloons", goal: "All five sounds, 10 seconds each. Take a breath when you need to.", target: 10, rounds: 5, continuous: false, steadyTol: null, lenience: 0.8, sounds: ["ooo", "aah", "uuu", "eee", "iii"], settings: { target_sec: 10, rounds: 5, lenience: 0.8 } },
-  { name: "High in the Sky", goal: "All five sounds, 15 seconds each. Keep the sound clear.", target: 15, rounds: 5, continuous: false, steadyTol: null, lenience: 0.6, sounds: ["eee", "uuu", "aah", "iii", "ooo"], settings: { target_sec: 15, rounds: 5, lenience: 0.6 } },
-  { name: "Gentle Voice", goal: "All five sounds, 20 seconds each, with a steady voice.", target: 20, rounds: 5, continuous: false, steadyTol: 8, lenience: 0.4, sounds: ["iii", "ooo", "eee", "aah", "uuu"], settings: { target_sec: 20, rounds: 5, steady_tolerance_db: 8, lenience: 0.4 } },
-  { name: "Over the Mountains", goal: "All five sounds, 25 seconds each, smooth, steady and clear.", target: 25, rounds: 5, continuous: false, steadyTol: 6, lenience: 0.25, sounds: ["uuu", "iii", "ooo", "eee", "aah"], settings: { target_sec: 25, rounds: 5, steady_tolerance_db: 6, lenience: 0.25 } },
+  { name: "First Puffs", goal: "Say A, E, I, O and U. Each sound for 5 seconds to blow up the balloon.", target: 5, rounds: 5, continuous: false, steadyTol: null, lenience: 1, sounds: ["aah", "ehh", "eee", "ooo", "uuu"], settings: { target_sec: 5, rounds: 5, lenience: 1 } },
+  { name: "Bigger Balloons", goal: "All five sounds, 10 seconds each. Take a breath when you need to.", target: 10, rounds: 5, continuous: false, steadyTol: null, lenience: 0.8, sounds: ["ooo", "aah", "uuu", "eee", "ehh"], settings: { target_sec: 10, rounds: 5, lenience: 0.8 } },
+  { name: "High in the Sky", goal: "All five sounds, 15 seconds each. Keep the sound clear.", target: 15, rounds: 5, continuous: false, steadyTol: null, lenience: 0.6, sounds: ["eee", "uuu", "aah", "ehh", "ooo"], settings: { target_sec: 15, rounds: 5, lenience: 0.6 } },
+  { name: "Gentle Voice", goal: "All five sounds, 20 seconds each, with a steady voice.", target: 20, rounds: 5, continuous: false, steadyTol: 8, lenience: 0.4, sounds: ["ehh", "ooo", "eee", "aah", "uuu"], settings: { target_sec: 20, rounds: 5, steady_tolerance_db: 8, lenience: 0.4 } },
+  { name: "Over the Mountains", goal: "All five sounds, 25 seconds each, smooth, steady and clear.", target: 25, rounds: 5, continuous: false, steadyTol: 6, lenience: 0.25, sounds: ["uuu", "ehh", "ooo", "eee", "aah"], settings: { target_sec: 25, rounds: 5, steady_tolerance_db: 6, lenience: 0.25 } },
 ];
 
 // The sound for each round, cycling through the level's list.
@@ -35,7 +35,7 @@ export function scoreBreeze({ roundsDone, rounds, steadyPct = null }) {
 
 const READY_SEC = 1.4; // pause before each round starts listening
 
-const BALLOON = { aah: "#ff7aa2", ooo: "#7ab8ff", eee: "#ffc94a", iii: "#9be38f", uuu: "#c49bff" };
+const BALLOON = { aah: "#ff7aa2", ooo: "#7ab8ff", eee: "#ffc94a", ehh: "#9be38f", uuu: "#c49bff" };
 const STEPS = 4; // the balloon grows in visible steps, each marked on the ring
 
 
@@ -360,7 +360,7 @@ const def = {
         summary: [
           { label: ctx.t("balloons"), value: `${g.roundsDone}/${L.rounds}` },
           { label: ctx.t("longestHold"), value: `${Math.floor(longest)} s` },
-          { label: ctx.t("soundsDone"), value: ["aah", "eee", "iii", "ooo", "uuu"].filter((v) => g.bySound[v] && g.bySound[v].done).map((v) => VOWEL_LETTER[v]).join(" ") || "–" },
+          { label: ctx.t("soundsDone"), value: ["aah", "ehh", "eee", "ooo", "uuu"].filter((v) => g.bySound[v] && g.bySound[v].done).map((v) => VOWEL_LETTER[v]).join(" ") || "–" },
         ],
       };
     };

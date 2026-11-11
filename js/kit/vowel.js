@@ -1,4 +1,7 @@
-// Vowel recognition for the voice games: which sound is the child making (aaa, eee, iii, ooo, uuu)?
+// Vowel recognition for the voice games: which sound is the child making?
+// The five held vowels, one per letter, chosen so no two sound alike when held:
+//   A "aaa" (father), E "ehh" (egg), I "eee" (see), O "ooo" (go), U "uuu" (moon).
+// (Before 6.0.1, E was "eee" and I was "iii"; held out, those are the same sound.)
 // Pure functions, no browser needed (unit tested), and nothing leaves the device.
 //
 // A vowel is identified by its first two formants (F1, F2), the resonances of the mouth:
@@ -6,13 +9,13 @@
 // Steps: subtract the room's noise from the spectrum, fit an all-pole (LPC) model to get a smooth
 // spectral envelope, read F1 and F2 from its peaks, then compare with reference values. Men, women
 // and children have different vocal tract lengths, so references are chosen by voice pitch.
-export const VOWELS = ["aah", "eee", "iii", "ooo", "uuu"];
+export const VOWELS = ["aah", "ehh", "eee", "ooo", "uuu"];
 
 // [F1, F2] in Hz for [man, woman, child]. Based on Peterson & Barney (1952) and Hillenbrand (1995).
 const REF = {
   aah: [[730, 1090], [850, 1220], [1030, 1370]],
   eee: [[270, 2290], [310, 2790], [370, 3200]],
-  iii: [[390, 1990], [430, 2480], [530, 2730]],
+  ehh: [[530, 1850], [620, 2200], [690, 2400]],
   ooo: [[500, 850], [540, 950], [620, 1100]],
   uuu: [[300, 870], [370, 950], [430, 1170]],
 };
@@ -121,8 +124,8 @@ const ANCHOR_MARGIN = 2.5;   // ... or when another vowel is this much closer
 const ANCHOR_MIN_GAP = 1.0;  // two learned vowels closer than this are one sound said twice
 
 // Sky Glide: each vowel has its own height, from the back of the mouth to the front (the order of
-// the second formant): "uuu" lowest, then "ooo", "aaa", "iii", and "eee" at the top.
-export const VOWEL_HEIGHT = { uuu: 0.1, ooo: 0.3, aah: 0.5, iii: 0.7, eee: 0.9 };
+// the second formant): U "uuu" lowest, then O "ooo", A "aaa", E "ehh", and I "eee" at the top.
+export const VOWEL_HEIGHT = { uuu: 0.1, ooo: 0.3, aah: 0.5, ehh: 0.7, eee: 0.9 };
 
 export function nearestVowel(dist) {
   let best = null, d = Infinity;

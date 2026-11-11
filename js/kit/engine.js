@@ -159,15 +159,21 @@ export class Runner {
         <div class="ov-badge" aria-hidden="true">${li + 1}</div>
         <p class="ov-eyebrow">${esc(t("levelOf", { n: li + 1, m: def.levels.length }))}</p>
         <h2>${esc(levelText(def, li, "name"))}</h2>
-        <p class="ov-goal">${esc(levelText(def, li, "goal"))}</p>
-        ${howTo}
-        <ul class="ov-meta">
-          <li><span>${esc(t("controls"))}</span>${esc(controls)}</li>
-        </ul>
-        ${this._variantHtml()}
-        <p class="ov-note">${esc(t(this.config.onlineSpeech && !this.config.onlineLocked ? "privacyOnline" : "privacy"))}</p>
-        <div class="ov-actions"><button class="btn btn-primary btn-big" data-act="start">${esc(t("start"))}</button>
-        <button class="btn btn-ghost" data-act="exit">${esc(t("backToMap"))}</button></div>
+        <div class="ov-cols">
+          <div class="ov-col">
+            <p class="ov-goal">${esc(levelText(def, li, "goal"))}</p>
+            ${howTo}
+          </div>
+          <div class="ov-col">
+            <ul class="ov-meta">
+              <li><span>${esc(t("controls"))}</span>${esc(controls)}</li>
+            </ul>
+            ${this._variantHtml()}
+            <p class="ov-note">${esc(def.id !== "garden" ? t("privacy") : this.config.onlineSpeech && !this.config.onlineLocked ? t("privacyOnline") : t("privacyGarden"))}</p>
+            <div class="ov-actions"><button class="btn btn-primary btn-big" data-act="start">${esc(t("start"))}</button>
+            <button class="btn btn-ghost" data-act="exit">${esc(t("backToMap"))}</button></div>
+          </div>
+        </div>
       </div>`);
     this._wire({ start: () => this._start(), exit: () => this.exit() });
     this.els.overlay.querySelectorAll("[data-variant]").forEach((b) => b.addEventListener("click", () => {
@@ -217,6 +223,8 @@ export class Runner {
           this.tracker = new Tracker(needs, {
             modelBase: this.config.modelBase,
             onProgress: (p) => this._setLoading(p),
+            // a game may need only one hand (see def.maxHands): tracking is quicker then
+            maxHands: typeof this.def.maxHands === "function" ? this.def.maxHands(this.level) : this.def.maxHands || 2,
           });
           this.tracker.wholeHand = !!this.config.wholeHand;
           await this.tracker.start(() => this.closed);

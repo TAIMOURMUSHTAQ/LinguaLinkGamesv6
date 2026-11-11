@@ -55,9 +55,9 @@ function powerOf(frame) {
   return out;
 }
 const VOICES = {
-  man: { f0: 120, f: { aah: [730, 1090, 2440, 3400], eee: [270, 2290, 3010, 3600], iii: [390, 1990, 2550, 3400], ooo: [500, 850, 2500, 3400], uuu: [300, 870, 2240, 3300] } },
-  woman: { f0: 210, f: { aah: [850, 1220, 2810, 3900], eee: [310, 2790, 3310, 4200], iii: [430, 2480, 3070, 4000], ooo: [540, 950, 2750, 3900], uuu: [370, 950, 2670, 3800] } },
-  child: { f0: 290, f: { aah: [1030, 1370, 3170, 4300], eee: [370, 3200, 3730, 4600], iii: [530, 2730, 3600, 4500], ooo: [620, 1100, 3180, 4300], uuu: [430, 1170, 3260, 4400] } },
+  man: { f0: 120, f: { aah: [730, 1090, 2440, 3400], eee: [270, 2290, 3010, 3600], ehh: [530, 1850, 2500, 3400], ooo: [500, 850, 2500, 3400], uuu: [300, 870, 2240, 3300] } },
+  woman: { f0: 210, f: { aah: [850, 1220, 2810, 3900], eee: [310, 2790, 3310, 4200], ehh: [620, 2200, 2900, 3900], ooo: [540, 950, 2750, 3900], uuu: [370, 950, 2670, 3800] } },
+  child: { f0: 290, f: { aah: [1030, 1370, 3170, 4300], eee: [370, 3200, 3730, 4600], ehh: [690, 2400, 3300, 4300], ooo: [620, 1100, 3180, 4300], uuu: [430, 1170, 3260, 4400] } },
 };
 // One clip analysed the way the game does: the median of a few frames.
 function hear(who, vowel, opts = {}) {
@@ -80,7 +80,8 @@ test("Vowels: each sound is recognised for men, women and children", () => {
 
 test("Vowels: the wrong sound does not fill the balloon", () => {
   // far-apart sounds are never accepted, even on the most forgiving setting
-  const FAR = { aah: ["eee", "iii", "uuu"], eee: ["aah", "ooo", "uuu"], iii: ["aah", "ooo", "uuu"], ooo: ["eee", "iii"], uuu: ["aah", "eee", "iii"] };
+  // E "ehh" and I "eee" must never be taken for each other: that was the mix-up before 6.0.1
+  const FAR = { aah: ["eee", "ehh", "uuu"], eee: ["aah", "ooo", "uuu", "ehh"], ehh: ["aah", "ooo", "uuu", "eee"], ooo: ["eee", "ehh"], uuu: ["aah", "eee", "ehh"] };
   for (const who of Object.keys(VOICES)) for (const [spoken, targets] of Object.entries(FAR)) {
     const h = hear(who, spoken);
     for (const target of targets) assert.ok(!V.matchesVowel(h.d, target, 1), `${who} saying ${spoken} must not count as ${target}`);
@@ -188,9 +189,9 @@ test("Sky Glide: each vowel flies to its own height, silence glides straight; St
   run(1); assert.ok(Math.abs(g.birdH - h0) < 0.001, "silence: straight");
   say(mic, "eee"); run(2); assert.ok(Math.abs(g.birdH - V.VOWEL_HEIGHT.eee) < 0.05, `E flies to the top: ${g.birdH}`);
   say(mic, "uuu"); run(2.5); assert.ok(Math.abs(g.birdH - V.VOWEL_HEIGHT.uuu) < 0.05, "U flies to the bottom (a quiet voice is enough)");
-  say(mic, "iii"); run(2); assert.ok(Math.abs(g.birdH - V.VOWEL_HEIGHT.iii) < 0.05, "I");
+  say(mic, "ehh"); run(2); assert.ok(Math.abs(g.birdH - V.VOWEL_HEIGHT.ehh) < 0.05, "I");
   say(mic, null); const h1 = g.birdH; run(1); assert.ok(Math.abs(g.birdH - h1) < 0.02, "silence holds the height");
-  const order = ["uuu", "ooo", "aah", "iii", "eee"].map((v) => V.VOWEL_HEIGHT[v]);
+  const order = ["uuu", "ooo", "aah", "ehh", "eee"].map((v) => V.VOWEL_HEIGHT[v]);
   for (let i = 1; i < order.length; i++) assert.ok(order[i] > order[i - 1], "U, O, A, I, E from bottom to top");
 
   const mic2 = mockMic();
@@ -210,7 +211,7 @@ test("Sky Glide: each vowel flies to its own height, silence glides straight; St
 
 test("Personal vowels: the child's own A, E, I, O, U are told apart", () => {
   // a child whose vowels sit away from the textbook values: E and I close together, A low
-  const own = { aah: [700, 1500], eee: [400, 2350], iii: [470, 2100], ooo: [560, 1000], uuu: [380, 900] };
+  const own = { aah: [700, 1500], eee: [400, 2350], ehh: [470, 2100], ooo: [560, 1000], uuu: [380, 900] };
   const samples = {};
   for (const [v, [f1, f2]] of Object.entries(own)) samples[v] = Array.from({ length: 12 }, (_, i) => [f1 * (1 + ((i % 5) - 2) * 0.02), f2 * (1 + ((i % 3) - 1) * 0.02)]);
   const anchors = V.makeVowelAnchors(samples);
@@ -233,7 +234,7 @@ test("Voice check: asks for A, E, I, O, U in turn and hands the child's vowels t
   const ctx = makeCtx(breeze, { mode: "sensors", mic });
   const k = createVowelCheck(ctx, { onDone: (a) => (done = a) });
   k.begin();
-  const F = { aah: [800, 1300], eee: [350, 2700], iii: [450, 2300], ooo: [550, 950], uuu: [380, 900] };
+  const F = { aah: [800, 1300], eee: [350, 2700], ehh: [600, 2200], ooo: [550, 950], uuu: [380, 900] };
   for (const v of CHECK_ORDER) {
     Object.assign(mic, { voiced: true, formants: { f1: F[v][0], f2: F[v][1] } });
     for (let i = 0; i < 60 && CHECK_ORDER[k.i] === v && !k.done; i++) k.update(0.05);
@@ -562,17 +563,16 @@ test("Finger Numbers: a different finger each level, only that finger draws, the
   assert.deepEqual(fingerStates(hand([0, 1, 0, 0, 0])), [false, true, false, false, false]);
   assert.deepEqual(fingerStates(hand([0, 0, 0, 0, 0])), [false, false, false, false, false]);
   assert.deepEqual(fingerStates(hand([0, 0, 0, 0, 1])), [false, false, false, false, true]);
-  // playing: a curled finger pauses, the right finger draws
-  const tip = { x: 0.5, y: 0.5 };
-  const h = { hand: "left", fingers: [false, false, false, false, false], count: 0, tips: [tip, tip, tip, tip, tip] };
+  // playing: with the finger curled the whole hand draws (v6.0.1), and the level's finger draws when up
+  const tip = { x: 0.5, y: 0.5 }, palm = { x: 0.5, y: 0.5 };
+  const h = { hand: "left", fingers: [false, false, false, false, false], count: 0, tips: [tip, tip, tip, tip, tip], palm };
   const ctx = makeCtx(numbers.default, { mode: "sensors", tracker: { hands: [h] }, level: { ...L[0], gain: 1, items: L[0].items.slice(0, 1) } });
   const g = numbers.default.create(ctx);
   g.start();
-  for (let i = 0; i < 40; i++) { if (g.tracer.next) { tip.x = g.tracer.next.x / 1280; tip.y = g.tracer.next.y / 720; } g.update(0.05); }
-  assert.equal(g.tracer.reached, 0, "a curled finger draws nothing");
-  assert.equal(g.hint, "useFinger");
+  for (let i = 0; i < 14 && !g.tracer.done; i++) { ctx.time += 0.05; if (g.tracer.next) { palm.x = g.tracer.next.x / 1280; palm.y = g.tracer.next.y / 720; } g.update(0.05); }
+  assert.ok(g.tracer.reached > 0, "a closed hand still draws, with the middle of the hand");
   h.fingers = [false, true, false, false, false]; h.count = 1;
-  for (let i = 0; i < 2000 && !g.done; i++) { if (g.tracer && g.tracer.next) { tip.x = g.tracer.next.x / 1280; tip.y = g.tracer.next.y / 720; } g.update(0.05); }
+  for (let i = 0; i < 2000 && !g.done; i++) { ctx.time += 0.05; if (g.tracer && g.tracer.next) { tip.x = g.tracer.next.x / 1280; tip.y = g.tracer.next.y / 720; } g.update(0.05); }
   assert.ok(g.done);
   const res = g.result();
   assert.equal(res.metrics.finger, "index"); assert.ok(g.isolatedT > 0, "time with only that finger up is measured");
@@ -699,6 +699,6 @@ test("All the games are complete in English and Urdu", () => {
   for (const g of GAMES) for (let i = 0; i < g.levels.length; i++) for (const f of ["name", "goal"]) assert.match(levelText(g, i, f), /[؀-ۿ]/, `${g.id}.${i + 1}.${f}`);
   for (const g of GAMES) g.howTo.forEach((_, i) => assert.match(t(`${g.id}.howto.${i + 1}`), /[؀-ۿ]/, `${g.id}.howto.${i + 1}`));
   setLang("en");
-  for (const k of ["snd_aah", "snd_eee", "snd_iii", "snd_ooo", "snd_uuu"]) assert.ok(STRING_TABLES.en[k] && STRING_TABLES.ur[k], k);
+  for (const k of ["snd_aah", "snd_eee", "snd_ehh", "snd_ooo", "snd_uuu"]) assert.ok(STRING_TABLES.en[k] && STRING_TABLES.ur[k], k);
   assert.ok(t("cueUp").includes("eee")); assert.ok(t("cueDown").includes("aaa"));
 });

@@ -5,12 +5,12 @@ They run in any modern browser on a laptop, tablet or phone, and can be installe
 The camera and microphone are processed **on the device only**: no video or audio is uploaded, unless a
 grown-up turns on the online word check for Word Garden.
 
-**Version 6.0.0.** See [CHANGELOG.md](CHANGELOG.md) for what changed.
+**Version 6.0.1.** See [CHANGELOG.md](CHANGELOG.md) for what changed.
 
 | Game | Therapy focus | Controlled by | Touch fallback |
 |---|---|---|---|
 | **Balloon Breeze** | Breath support, sustained voice, clear vowels | Microphone: only the sound asked for ("aaa", "eee", "iii", "ooo", "uuu") blows up the balloon | Hold the big button |
-| **Sky Glide** | The five vowels on cue, quiet and loud voice | Microphone: each vowel flies the bird to its own height (U lowest, then O, A, I, E). Two ways to play: Keep flying, or Stop and say | Drag up and down, or arrow keys |
+| **Sky Glide** | The five vowels on cue, quiet and loud voice | Microphone: each vowel flies the bird to its own height (U lowest, then O, A, E, I). Two ways to play: Keep flying, or Stop and say | Drag up and down, or arrow keys |
 | **Voice Painter** | Pitch control: rising, falling and steady pitch | Microphone pitch: a higher voice paints higher, the same note paints straight. Two ways to play: Brush waits, or Brush keeps going | Drag up and down, or arrow keys |
 | **Fish Feast** | Oral-motor and facial movement: jaw, lips, cheeks, tongue, head, eyebrows, expressions; endurance | Camera face tracking (MediaPipe); the tongue from the colour around the mouth. 24 moves; Mixed, Mouth and tongue, or Big face moves | Therapist taps "Done" or "Not yet" (also for tongue moves in camera mode) |
 | **Firefly Night** | Reaching, crossing midline, hand use, sequencing | Camera hand tracking (MediaPipe) | Touch or click |
@@ -66,6 +66,7 @@ Every level changes something that matters for therapy, so a step up means a rea
 | 4 | | Little Finger: 10 1 4 7 | Up and Down: also follow a height line | Flamingo Balance: one leg, 20 s |
 | 5 | | Show and Count: hold up 1 to 10 fingers | Tower of Treats: big load, narrow zone | Animal Parade: mixed routine, 25 s |
 
+The five vowels are A "aaa" (father), E "ehh" (egg), I "eee" (see), O "ooo" (go) and U "uuu" (moon).
 Balloon Breeze and Sky Glide learn the child's own A, E, I, O and U once per visit (a short voice check) and reuse
 them in later levels; Voice Painter learns the child's middle note the same way.
 Fish Feast shuffles each level's moves: never the same twice in a row, and every move of the level comes once

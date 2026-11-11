@@ -52,7 +52,7 @@ test("Voice Painter: the voice check finds the middle note, then the voice paint
   const g = pitch.default.create(makeCtx(pitch.default, { mode: "sensors", mic, level }));
   const run = (sec) => { for (let i = 0; i < sec * 20; i++) g.update(0.05); };
   assert.equal(g.phase, "check");
-  Object.assign(mic, { voiced: true, periodic: true, pitchHz: 220 });
+  Object.assign(mic, { voiced: true, periodic: true, steadyVoice: true, pitchHz: 220 });
   run(3);
   assert.notEqual(g.phase, "check", "the check is over");
   assert.ok(Math.abs(g.center - 220) < 1, `middle note ${g.center}`);
@@ -64,7 +64,7 @@ test("Voice Painter: the voice check finds the middle note, then the voice paint
   // slide the voice up, 4 semitones below to 4 above the middle, over 5 seconds: follows the slide
   for (let i = 0; i < 5 * 20 && g.phase === "paint"; i++) {
     const h = pitch.PICTURES.up.f(g.p);
-    Object.assign(mic, { voiced: true, periodic: true, pitchHz: 220 * Math.pow(2, ((h - 0.5) * 2 * level.range) / 12) });
+    Object.assign(mic, { voiced: true, periodic: true, steadyVoice: true, pitchHz: 220 * Math.pow(2, ((h - 0.5) * 2 * level.range) / 12) });
     g.update(0.05);
   }
   run(0.5);
@@ -82,10 +82,10 @@ test("Voice Painter: a flat voice does not paint a slide, and the flowing brush 
   const level = { ...pitch.LEVELS[0], pictures: ["up"] };
   const g = pitch.default.create(makeCtx(pitch.default, { mode: "sensors", mic, level, variant: "flow" }));
   const run = (sec) => { for (let i = 0; i < sec * 20; i++) g.update(0.05); };
-  Object.assign(mic, { voiced: true, periodic: true, pitchHz: 200 }); run(3);
+  Object.assign(mic, { voiced: true, periodic: true, steadyVoice: true, pitchHz: 200 }); run(3);
   Object.assign(mic, { voiced: false, periodic: false, pitchHz: null }); run(1.7);
   run(1); assert.ok(g.p > 0.15, "the brush moves without a voice");
-  Object.assign(mic, { voiced: true, periodic: true, pitchHz: 200 }); run(5);
+  Object.assign(mic, { voiced: true, periodic: true, steadyVoice: true, pitchHz: 200 }); run(5);
   assert.equal(g.matches.length, 1);
   assert.ok(g.matches[0] < 0.5, `one note is not a slide (${g.matches[0]})`);
 });
@@ -106,9 +106,13 @@ test("Pointing: pointer finger, else another finger, else the whole hand; no jum
   assert.equal(sp.pick({ by: "hand", finger: null }, 500).by, "hand", "a lasting change is followed");
 });
 
-test("Finger Numbers: when the level's finger is not seen, another finger or the whole hand draws", async () => {
+test("Finger Numbers: the whole hand draws at once when the level's finger is not up; one hand is tracked", async () => {
   const numbers = await import("../js/games/numbers.js");
-  assert.equal(numbers.FALLBACK_AFTER, 2);
+  const letters = await import("../js/games/letters.js");
+  assert.equal(numbers.FALLBACK_AFTER, 0);
+  assert.equal(numbers.default.maxHands(numbers.LEVELS[0]), 1, "drawing levels look for one hand: quicker tracking");
+  assert.equal(numbers.default.maxHands(numbers.LEVELS[4]), 2, "counting to ten needs two hands");
+  assert.equal(letters.default.maxHands, 1);
 });
 
 test("Tongue measure: a red area below the lower lip or beside a corner, compared with the cheeks", () => {
@@ -136,4 +140,41 @@ test("Room check: a voice during the check is not taken for the room", async () 
   assert.ok(r.floor < -55, `the floor stays at the room (${r.floor})`);
   assert.ok(r.quietMax < -50, "only the quiet frames make the room's spectrum");
   assert.equal(roomLevel([]).floor, -60);
+});
+
+test("Voice Painter: a slipped pitch reading does not make the brush jump, a real jump is followed", () => {
+  const tr = new pitch.PitchTrack();
+  assert.equal(tr.push(0), null, "a sound starts once two readings agree");
+  assert.ok(Math.abs(tr.push(0.3) - 0.15) < 0.2);
+  const steady = tr.est;
+  assert.ok(Math.abs(tr.push(12) - steady) < 0.5, "an octave slip is folded back");
+  assert.ok(Math.abs(tr.push(-9) - steady) < 0.5, "one far reading is dropped");
+  for (const st of [0.5, 1, 1.5, 2, 2.5]) tr.push(st);
+  assert.ok(tr.est > 1.8, `a voice sliding up is followed (${tr.est})`);
+  for (const st of [7, 7.2, 7.1]) tr.push(st);
+  assert.ok(Math.abs(tr.est - 7.1) < 0.3, `a real step up is followed after three readings (${tr.est})`);
+});
+
+test("Balance Tray: one hand holds the tray, and fallen fruit is replaced while the game waits for hands", async () => {
+  const bal = await import("../js/games/balance.js");
+  const flat = { knuckles: [{ x: 0.4, y: 0.5 }, { x: 0.5, y: 0.5 }] };
+  const tipped = { knuckles: [{ x: 0.5, y: 0.55 }, { x: 0.4, y: 0.5 }] };
+  assert.equal(bal.tiltFromOneHand(flat), 0);
+  assert.ok(bal.tiltFromOneHand(tipped) > 20, "right side lower: tilt to the right");
+  const hand = (x, y, k = flat.knuckles) => ({ palm: { x, y }, knuckles: k, hand: "right" });
+  const tracker = { hands: [hand(0.4, 0.5), hand(0.6, 0.5)] };
+  const ctx = makeCtx(bal.default, { mode: "sensors", tracker, level: bal.LEVELS[0] });
+  const g = bal.default.create(ctx);
+  g.start();
+  const run = (sec) => { for (let i = 0; i < sec * 20; i++) g.update(0.05); };
+  run(3);
+  assert.equal(g.state, "carry");
+  tracker.hands = [hand(0.5, 0.5)]; run(2);
+  assert.equal(g.handsMissing, 0, "one hand is enough to keep playing");
+  assert.ok(g.single, "the one hand holds the tray");
+  // a fruit falls off, then the hands leave the picture: a new fruit still comes at once
+  g.items.forEach((it) => { it.fall = 0; it.pos = 1.5; });
+  run(0.1);
+  tracker.hands = []; run(1.5);
+  assert.ok(g.items.some((it) => !it.off), "a new fruit is on the tray while the game waits for the hands");
 });

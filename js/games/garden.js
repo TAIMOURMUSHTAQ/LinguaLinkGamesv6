@@ -328,9 +328,9 @@ const def = {
       const retrying = g.state === "retry";
       if (retrying) list.push({ id: "again", kind: "tap", tone: "go", label: "↻ " + ctx.t("tryAgain"), onTap: () => { if (g.state === "retry") toListen(); } });
       if (g.checkBy === "auto") {
-        // the game checks by itself; the adult can still say it was right, or move on
+        // The game checks by itself: no "Correct" button, so the word only counts when the game hears
+        // it. (A grown-up who wants to judge the words chooses "Grown-up checks" on the level card.)
         list.push(...listenBack());
-        list.push({ id: "correct", kind: "tap", tone: retrying ? undefined : "go", label: "✓ " + ctx.t("correct"), onTap: () => record("clear", "adult") });
       } else {
         list.push({ id: "said", kind: "tap", tone: "go", label: ctx.t("saidIt"), onTap: () => toCheck(false) });
       }

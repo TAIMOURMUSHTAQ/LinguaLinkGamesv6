@@ -6,7 +6,8 @@ import { createServer } from "node:http";
 import { createReadStream, promises as fs } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createGzip } from "node:zlib";
+import { createGzip, brotliCompress, gzip, constants as Z } from "node:zlib";
+import { promisify } from "node:util";
 
 const ROOT = resolve(fileURLToPath(new URL(".", import.meta.url)));
 const PORT = +process.env.PORT || 8080;
@@ -19,6 +20,35 @@ const TYPES = {
   ".task": "application/octet-stream", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".pdf": "application/pdf",
 };
 const COMPRESS = new Set([".html", ".js", ".mjs", ".css", ".json", ".webmanifest", ".svg", ".md", ".txt"]);
+// The camera engine and models are big. The engine shrinks to a quarter when compressed (11 MB to
+// about 3 MB) and the models by about a quarter, so they are compressed once, kept in memory and
+// sent compressed: the first camera game starts much sooner, above all on a phone or a slow line.
+const BIG_COMPRESS = new Set([".wasm", ".task"]);
+const packed = new Map();   // "file|etag|enc" -> Promise<Buffer>
+const brAsync = promisify(brotliCompress), gzAsync = promisify(gzip);
+function packedBody(file, etag, enc) {
+  const key = `${file}|${etag}|${enc}`;
+  if (!packed.has(key)) {
+    packed.set(key, fs.readFile(file).then((buf) => enc === "br"
+      ? brAsync(buf, { params: { [Z.BROTLI_PARAM_QUALITY]: 9, [Z.BROTLI_PARAM_SIZE_HINT]: buf.length } })
+      : gzAsync(buf, { level: 9 })).catch((e) => { packed.delete(key); throw e; }));
+  }
+  return packed.get(key);
+}
+// Prepare the compressed engine and models as soon as the server starts, so no visitor waits for it.
+async function warmPacked() {
+  for (const dir of ["vendor/mediapipe/wasm", "models"]) {
+    const names = await fs.readdir(join(ROOT, dir)).catch(() => []);
+    for (const n of names) {
+      if (!BIG_COMPRESS.has(extname(n).toLowerCase())) continue;
+      const file = join(ROOT, dir, n), st = await fs.stat(file).catch(() => null);
+      if (!st) continue;
+      const etag = `"${st.size.toString(36)}-${st.mtimeMs.toString(36)}"`;
+      for (const enc of ["br", "gzip"]) await packedBody(file, etag, enc).catch(() => {});
+    }
+  }
+}
+
 // Never served: tooling, tests, reports and project notes. Only the app itself is public.
 const PRIVATE = ["/tests/", "/scripts/", "/node_modules/", "/.git/", "/qa/", "/docs/", "/integration/"];
 const PRIVATE_FILES = ["/package.json", "/package-lock.json", "/render.yaml", "/server.mjs", "/start-mac-linux.sh", "/start-windows.bat"];
@@ -66,7 +96,14 @@ const server = createServer(async (req, res) => {
     const headers = { ...SECURITY, "Content-Type": TYPES[ext] || "application/octet-stream", "Cache-Control": cacheFor(path), ETag: etag, "Last-Modified": st.mtime.toUTCString() };
     if (req.headers["if-none-match"] === etag) { res.writeHead(304, headers); return res.end(); }
     if (req.method === "HEAD") { res.writeHead(200, { ...headers, "Content-Length": st.size }); return res.end(); }
-    if (COMPRESS.has(ext) && /\bgzip\b/.test(req.headers["accept-encoding"] || "")) {
+    const accept = req.headers["accept-encoding"] || "";
+    const big = BIG_COMPRESS.has(ext) && (/\bbr\b/.test(accept) ? "br" : /\bgzip\b/.test(accept) ? "gzip" : null);
+    if (big) {
+      const body = await packedBody(file, etag, big);
+      res.writeHead(200, { ...headers, "Content-Encoding": big, Vary: "Accept-Encoding", "Content-Length": body.length });
+      return res.end(body);
+    }
+    if (COMPRESS.has(ext) && /\bgzip\b/.test(accept)) {
       res.writeHead(200, { ...headers, "Content-Encoding": "gzip", Vary: "Accept-Encoding" });
       createReadStream(file).pipe(createGzip()).pipe(res);
     } else {
@@ -78,4 +115,7 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, HOST, () => console.log(`LinguaLink Play is running at http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`));
+server.listen(PORT, HOST, () => {
+  console.log(`LinguaLink Play is running at http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
+  warmPacked().then(() => console.log("Camera files ready (compressed)"));
+});

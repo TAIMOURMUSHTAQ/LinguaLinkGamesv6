@@ -3,7 +3,7 @@
 //   fetched fresh (network first) so a new release shows at once; offline, the cache answers.
 // - The large camera files (WebAssembly engine and models) are cached the first time they are
 //   used and then served from the cache, so camera games start quickly and work offline.
-const VERSION = "6.0.0";
+const VERSION = "6.0.1";
 const SHELL = `llp-shell-${VERSION}`;
 const BIG = "llp-big-v1"; // models and engine change rarely; kept across releases
 

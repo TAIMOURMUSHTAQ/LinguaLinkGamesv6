@@ -16,6 +16,7 @@ const check = (name, pass, detail = "") => { checks.push({ name, pass: !!pass, d
 const SR = 48000;
 const VOICE = { // a child's voice
   aah: [290, [1030, 1370, 3170, 4300]], eee: [290, [370, 3200, 3730, 4600]], ooo: [290, [620, 1100, 3180, 4300]],
+  ehh: [290, [690, 2400, 3300, 4300]],   // E as in "egg" (I is "eee" as in "see")
 };
 let seed = 7;
 const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296 - 0.5; };
@@ -55,6 +56,8 @@ const TIMELINE = [
   { name: "eee", part: () => vowel(...VOICE.eee, 4, 0.25) },
   { name: "gap", part: () => noise(2, 0.0006) },
   { name: "ooo", part: () => vowel(...VOICE.ooo, 4, 0.25) },
+  { name: "gap", part: () => noise(2, 0.0006) },
+  { name: "ehh", part: () => vowel(...VOICE.ehh, 4, 0.25) },
   { name: "gap", part: () => noise(2, 0.0006) },
   { name: "quiet-eee", part: () => vowel(...VOICE.eee, 4, 0.012) },
   { name: "gap", part: () => noise(2, 0.0006) },
@@ -124,7 +127,7 @@ try {
     await new Promise((res) => {
       const iv = setInterval(() => {
         const now = performance.now(); mic.update((now - last) / 1000); last = now;
-        out.push({ t: (now - t0) / 1000, speech: mic.speech, voiced: mic.voiced, periodic: mic.steadyVoice, hiss: mic.hiss, vowel: mic.vowel, dir: mic.direction(null), f1: mic.formants && mic.formants.f1, f2: mic.formants && mic.formants.f2, match: { aah: mic.isVowel('aah', 0.8), eee: mic.isVowel('eee', 0.8), ooo: mic.isVowel('ooo', 0.8) } });
+        out.push({ t: (now - t0) / 1000, speech: mic.speech, voiced: mic.voiced, periodic: mic.steadyVoice, hiss: mic.hiss, vowel: mic.vowel, dir: mic.direction(null), f1: mic.formants && mic.formants.f1, f2: mic.formants && mic.formants.f2, match: { aah: mic.isVowel('aah', 0.8), eee: mic.isVowel('eee', 0.8), ehh: mic.isVowel('ehh', 0.8), ooo: mic.isVowel('ooo', 0.8) } });
         if ((now - t0) / 1000 > ${t.toFixed(1)}) { clearInterval(iv); res(); }
       }, 33);
     });
@@ -144,6 +147,10 @@ try {
   check("aaa never counts as eee", share(inPart("aah"), (r) => !r.match.eee) >= 95, say("aah", (r) => !r.match.eee));
   check("eee is recognised as eee", share(inPart("eee"), (r) => r.match.eee) >= 80, say("eee", (r) => r.match.eee));
   check("eee never counts as aaa", share(inPart("eee"), (r) => !r.match.aah) >= 95, say("eee", (r) => !r.match.aah));
+  // E "ehh" and I "eee" held out: never taken for each other
+  check("ehh (E) is recognised as ehh", share(inPart("ehh"), (r) => r.match.ehh) >= 80, say("ehh", (r) => r.match.ehh));
+  check("ehh (E) never counts as eee (I)", share(inPart("ehh"), (r) => !r.match.eee) >= 95, say("ehh", (r) => !r.match.eee));
+  check("eee (I) never counts as ehh (E)", share(inPart("eee"), (r) => !r.match.ehh) >= 95, say("eee", (r) => !r.match.ehh));
   check("ooo is recognised as ooo", share(inPart("ooo"), (r) => r.match.ooo) >= 80, say("ooo", (r) => r.match.ooo));
   // v6: the games use the vowel itself (each vowel has its own height), not an up or down reading
   check("a quiet eee is still recognised as eee", share(inPart("quiet-eee"), (r) => r.match.eee) >= 70, say("quiet-eee", (r) => r.match.eee));
@@ -164,9 +171,9 @@ try {
   // the five-vowel voice check comes first (about 15 s), then the rounds: A, then E
   const onlyA = await playWith("only-aah.wav", () => vowel(...VOICE.aah, 8, 0.25), "breeze", 0, 45, BZ);
   const playRows = onlyA.out.filter((s) => s.ready !== false && s.sound);
-  const eeeRows = onlyA.out.filter((s) => s.sound === "eee");
+  const eeeRows = onlyA.out.filter((s) => s.sound === "ehh");   // round 2 is E "ehh"
   check("Balloon Breeze: a held aaa finishes the aaa round", onlyA.out.some((s) => s.done >= 1), `rounds done ${Math.max(...onlyA.out.map((s) => s.done))}, samples ${playRows.length}`);
-  check("Balloon Breeze: a held aaa does nothing in the eee round", eeeRows.length > 10 && eeeRows.every((s) => s.p === 0), `eee samples ${eeeRows.length}, highest ${Math.max(0, ...eeeRows.map((s) => s.p))}`);
+  check("Balloon Breeze: a held aaa does nothing in the E (ehh) round", eeeRows.length > 10 && eeeRows.every((s) => s.p === 0), `ehh samples ${eeeRows.length}, highest ${Math.max(0, ...eeeRows.map((s) => s.p))}`);
   check("Balloon Breeze: no script errors while playing", noisy.errors.length + onlyA.errors.length === 0, JSON.stringify([...noisy.errors, ...onlyA.errors].slice(0, 2)));
 
   // ---------- Sky Glide, level 1, played by one sound only ----------
@@ -177,9 +184,11 @@ try {
   const lastH = (run) => { const p = playOf(run); return p.length ? p[p.length - 1].h : null; };
   const band = (run) => { const p = playOf(run).map((s) => s.h); return p.length ? `${Math.min(...p).toFixed(2)}..${Math.max(...p).toFixed(2)}` : "none"; };
   const flyE = await playWith("fly-eee.wav", () => vowel(...VOICE.eee, 8, 0.25), "glide", 0, 45, GL);
-  check("Sky Glide: eee flies the bird to the top", lastH(flyE) > 0.8, `height ${lastH(flyE)}`);
+  check("Sky Glide: I (eee) flies the bird to the top", lastH(flyE) > 0.8, `height ${lastH(flyE)}`);
   const flyO = await playWith("fly-ooo.wav", () => vowel(...VOICE.ooo, 8, 0.25), "glide", 0, 45, GL);
   check("Sky Glide: ooo flies the bird to the O height", Math.abs(lastH(flyO) - 0.3) < 0.12, `height ${lastH(flyO)}`);
+  const flyEh = await playWith("fly-ehh.wav", () => vowel(...VOICE.ehh, 8, 0.25), "glide", 0, 45, GL);
+  check("Sky Glide: E (ehh) flies the bird to the E height, not the I height", Math.abs(lastH(flyEh) - 0.7) < 0.12, `height ${lastH(flyEh)}`);
   const flyA = await playWith("fly-aah.wav", () => vowel(...VOICE.aah, 8, 0.25), "glide", 0, 45, GL);
   check("Sky Glide: aaa keeps the bird at the middle (A) height", playOf(flyA).length > 5 && Math.abs(lastH(flyA) - 0.5) < 0.12, `heights ${band(flyA)}`);
   const quietE = await playWith("fly-quiet.wav", () => vowel(...VOICE.eee, 8, 0.012), "glide", 0, 45, GL);
