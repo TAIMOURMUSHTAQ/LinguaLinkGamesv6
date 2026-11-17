@@ -1,41 +1,43 @@
-// SKY GLIDE: steer a bird with the five vowels. Each vowel has its own height, ordered like the mouth
-// shapes from back to front: U "uuu" at the bottom, then O "ooo", A "aaa", E "ehh", and I "eee" at the
-// top. Each ring shows a letter: say that sound and the bird flies to its height. Silence glides
-// straight. Quiet voices and whispers count too. The voice check (shared with Balloon Breeze) learns
-// the child's own five vowels first; it runs once per visit and every level reuses it.
+// SKY GLIDE: steer a bird with a mix of sounds. Each sound has its own height: from the bottom, a hum
+// "mmm", then O "ooo", A "aaa", E "ehh", and a hiss "sss" at the top. Each ring shows its letter (M, O,
+// A, E, S): make that sound and the bird flies to its height. Silence glides straight. The vowels are
+// judged strictly (vowel.js clearVowel); the hum by how little energy it has above 600 Hz, and the hiss
+// by its high, noisy sound. The voice check (shared with Balloon Breeze) learns the child's own A, E, O
+// and hum first; it runs once per visit and every level reuses it.
 // Two ways to play (chosen on the level card):
 //   Keep flying: the bird never stops and the child steers through the rings.
 //   Stop and say: the bird waits before each ring and asks for its sound.
-// Sensor mode: microphone with vowel recognition. Touch mode: drag up and down, or use the arrow keys.
+// Sensor mode: microphone. Touch mode: drag up and down, or use the arrow keys.
 import { W, H, sky, hills, label, clamp, lerp, glow, star, vignette, rr } from "../kit/draw.js";
 import { sun, cloudLayer, flock, motes, butterflies, twinkles, windStreaks, SparkTrail } from "../kit/scene.js";
 import { VOWEL_HEIGHT } from "../kit/vowel.js";
-import { createVowelCheck, savedVowels, forgetVowels, VOWEL_LETTER } from "../kit/vowelcheck.js";
+import { createVowelCheck, savedVowels, savedHum, humChecked, forgetVowels, VOWEL_LETTER } from "../kit/vowelcheck.js";
 import { clampScore } from "../kit/results.js";
 
-// All five vowels on every level. Later levels are faster, with smaller rings, a mixed order, and a
-// closer sound match (lenience 1 accepts close neighbours, 0 needs a clear match).
+// All five sounds on every level. Later levels are faster, with smaller rings, a mixed order, and a
+// closer vowel match (lenience 1: a little further from the child's own vowel is fine; 0: very close).
 export const LEVELS = [
-  { name: "Five Clouds", goal: "Say A, E, I, O or U to fly to that letter. Each sound twice. 10 rings.", order: "pairs", count: 10, speed: 120, gap: 118, spacing: 560, lenience: 1, settings: { rings: 10, vowels: 5, order: "pairs" } },
-  { name: "Sound Steps", goal: "A, E, I, O, U in order, then again. 10 rings.", order: "steps", count: 10, speed: 135, gap: 104, spacing: 520, lenience: 0.8, settings: { rings: 10, vowels: 5, order: "steps" } },
-  { name: "Rolling Hills", goal: "Up and down the sounds like a wave. 12 rings.", order: "wave", count: 12, speed: 150, gap: 94, spacing: 460, lenience: 0.6, settings: { rings: 12, vowels: 5, order: "wave" } },
-  { name: "Quick Swallow", goal: "Faster, smaller rings in a mixed order. 14 rings.", order: "mixed", count: 14, speed: 175, gap: 84, spacing: 460, lenience: 0.45, settings: { rings: 14, vowels: 5, order: "mixed" } },
-  { name: "Glide Slides", goal: "The fastest flight. Clear sounds, mixed order. 16 rings.", order: "mixed2", count: 16, speed: 185, gap: 78, spacing: 400, lenience: 0.3, settings: { rings: 16, vowels: 5, order: "mixed2" } },
+  { name: "Five Clouds", goal: "Hum mmm, say O, A or E, or hiss sss to fly to that letter. Each sound twice. 10 rings.", order: "pairs", count: 10, speed: 120, gap: 118, spacing: 560, lenience: 1, settings: { rings: 10, sounds: 5, order: "pairs" } },
+  { name: "Sound Steps", goal: "Bottom to top: mmm, O, A, E, sss, then again. 10 rings.", order: "steps", count: 10, speed: 135, gap: 104, spacing: 520, lenience: 0.8, settings: { rings: 10, sounds: 5, order: "steps" } },
+  { name: "Rolling Hills", goal: "Up and down the sounds like a wave. 12 rings.", order: "wave", count: 12, speed: 150, gap: 94, spacing: 460, lenience: 0.6, settings: { rings: 12, sounds: 5, order: "wave" } },
+  { name: "Quick Swallow", goal: "Faster, smaller rings in a mixed order. 14 rings.", order: "mixed", count: 14, speed: 175, gap: 84, spacing: 460, lenience: 0.45, settings: { rings: 14, sounds: 5, order: "mixed" } },
+  { name: "Glide Slides", goal: "The fastest flight. Clear sounds, mixed order. 16 rings.", order: "mixed2", count: 16, speed: 185, gap: 78, spacing: 400, lenience: 0.3, settings: { rings: 16, sounds: 5, order: "mixed2" } },
 ];
 
 const TOP = 120, BOTTOM = 620; // flying band in screen pixels
 const BIRD_X = 320;
 const RATE = 0.7;              // band heights per second the bird can climb or dive
 const WAIT_LIMIT = 15;         // Stop and say: seconds before moving on from one ring
-export const LANES = ["uuu", "ooo", "aah", "ehh", "eee"];   // bottom to top
+export const LANES = ["mmm", "ooo", "aah", "ehh", "sss"];   // bottom to top
+export const GLIDE_VOWELS = ["ooo", "aah", "ehh"];         // judged as vowels
 export { forgetVowels as resetCalibration };
 
-// The vowel of every ring in a level. Deterministic, so sessions can be compared.
+// The sound of every ring in a level. Deterministic, so sessions can be compared.
 export function ringVowels(order, count) {
-  const f = ["aah", "ehh", "eee", "ooo", "uuu"];
-  const wave = ["uuu", "ooo", "aah", "ehh", "eee", "ehh", "aah", "ooo"];
-  const mixed = ["aah", "uuu", "eee", "ooo", "ehh", "aah", "eee", "uuu", "ehh", "ooo"];
-  const mixed2 = ["eee", "uuu", "ehh", "aah", "ooo", "eee", "aah", "uuu", "ooo", "ehh", "aah", "eee"];
+  const f = ["mmm", "ooo", "aah", "ehh", "sss"];
+  const wave = ["mmm", "ooo", "aah", "ehh", "sss", "ehh", "aah", "ooo"];
+  const mixed = ["aah", "mmm", "ehh", "sss", "ooo", "aah", "sss", "mmm", "ehh", "ooo"];
+  const mixed2 = ["sss", "mmm", "ehh", "aah", "ooo", "sss", "aah", "mmm", "ooo", "ehh", "aah", "sss"];
   return Array.from({ length: count }, (_, i) => {
     if (order === "pairs") return f[Math.floor(i / 2) % 5];
     if (order === "steps") return f[i % 5];
@@ -52,7 +54,7 @@ export function scoreGlide({ hits, total }) {
   return clampScore((hits / total) * 100);
 }
 
-const VOWEL_COLOR = { aah: "#ff7aa2", eee: "#ffc94a", ehh: "#7bd389", ooo: "#7ab8ff", uuu: "#c49bff" };
+const VOWEL_COLOR = { aah: "#ff7aa2", ehh: "#7bd389", ooo: "#7ab8ff", mmm: "#c49bff", sss: "#ffc94a" };
 
 const yOf = (h) => lerp(BOTTOM, TOP, h);
 
@@ -107,15 +109,15 @@ const def = {
   version: "6.0.0",
   title: "Sky Glide",
   color: "#f4845f",
-  focus: "Fly the bird with your voice: A, E, I, O, U",
+  focus: "Fly the bird with your voice: mmm, O, A, E, sss",
   input: "mic",
   mic: { vowels: true, onDb: 8, offDb: 5, softDb: 5 },
   inputLabel: "Microphone (each sound flies to its own height)",
   touchLabel: "Drag up and down on the screen, or use the arrow keys",
-  skills: ["Five vowel sounds", "Listening and answering", "Quiet and loud voice"],
+  skills: ["Vowels and other sounds", "Listening and answering", "Quiet and loud voice"],
   howTo: [
-    ["🎤", "First say each sound when asked: A, E, I, O, U. The game learns your voice."],
-    ["🔤", "Every ring has a letter. Each letter has its own height in the sky."],
+    ["🎤", "First make each sound when asked: O, A, E and a hum mmm. The game learns your voice."],
+    ["🔤", "Every ring has a letter. Bottom to top: M (hum mmm), O, A, E, S (hiss sss)."],
     ["🐦", "Say the letter's sound and the bird flies to it. Be quiet to fly straight."],
     ["⭐", "Fly through as many rings as you can."],
   ],
@@ -135,10 +137,14 @@ const def = {
     const rings = vowels.map((v, i) => ({ v, h: VOWEL_HEIGHT[v], x: W + 200 + i * L.spacing, state: "open" }));
     const sensors = ctx.mode === "sensors" && ctx.mic;
     const saved = sensors ? savedVowels() : null;
+    const savedHumLimit = sensors ? savedHum() : null;
     if (saved) ctx.mic.setAnchors(saved);
+    if (savedHumLimit) ctx.mic.humLimit = savedHumLimit;
+    // the voice check: the hum and the vowels; only the hum if the vowels were learnt earlier
+    const checkSounds = saved && humChecked() ? null : saved ? ["mmm"] : ["ooo", "aah", "ehh", "mmm"];
     const g = {
       done: false,
-      phase: sensors && !saved ? "check" : "play",
+      phase: sensors && checkSounds ? "check" : "play",
       birdH: 0.5, vel: 0, targetH: null,
       hits: 0, passed: 0,
       errors: [],
@@ -152,8 +158,8 @@ const def = {
       speed: L.speed,
       lenience: L.lenience,
     };
-    if (sensors && saved) ctx.event("voice_check_reused", {});
-    const check = g.phase === "check" ? createVowelCheck(ctx, { colors: VOWEL_COLOR, onDone: () => { g.phase = "play"; } }) : null;
+    if (sensors && saved && !checkSounds) ctx.event("voice_check_reused", {});
+    const check = g.phase === "check" ? createVowelCheck(ctx, { colors: VOWEL_COLOR, vowels: checkSounds, onDone: () => { g.phase = "play"; } }) : null;
     // Easier after 2 missed rings in a row: rings 18% taller, 12% slower, sound match looser, per step.
     // Harder after 5 hits in a row: rings 10% smaller, 10% faster, per step.
     g.adaptive = ctx.makeAdaptive({ upAfter: 5, downAfter: 2 });
@@ -167,13 +173,17 @@ const def = {
     g.onPointer = (type, x, y) => { if (ctx.mode === "touch" && (type === "down" || ctx.pointer.down)) { g.targetH = clamp((BOTTOM - y) / (BOTTOM - TOP), 0, 1); if (g.waiting) g.touched = true; } };
     g.start = () => { if (check) check.begin(); };
 
-    const hearing = () => ctx.mic && (ctx.mic.speech || ctx.mic.voiced) && !ctx.mic.hiss && !ctx.mic.selfSound;
+    const hearing = () => ctx.mic && (ctx.mic.speech || ctx.mic.voiced) && !ctx.mic.selfSound;
 
-    // The vowel being said, when it is clear enough for this level.
+    // The sound being made, when it is clear enough for this level: a hiss, a hum, or one of the
+    // three vowels (strict: this vowel and no other). Anything else is no sound for the bird.
     const heardVowel = () => {
       const mic = ctx.mic;
-      if (!hearing() || !mic.vowel) return null;
-      return mic.isVowel(mic.vowel, g.lenience) ? mic.vowel : null;
+      if (!hearing()) return null;
+      if (mic.hiss) return "sss";
+      if (mic.isHum && mic.isHum()) return "mmm";
+      for (const v of GLIDE_VOWELS) if (mic.isClearVowel ? mic.isClearVowel(v, g.lenience) : mic.isVowel(v, g.lenience)) return v;
+      return null;
     };
 
     const moveBird = (dt) => {
@@ -345,7 +355,7 @@ const def = {
         // shown to the child: counts and whole seconds only
         summary: [
           { label: ctx.t("rings"), value: `${g.hits}/${L.count}` },
-          { label: ctx.t("soundsDone"), value: ["aah", "ehh", "eee", "ooo", "uuu"].filter((v) => g.byVowel[v] && g.byVowel[v].hit).map((v) => VOWEL_LETTER[v]).join(" ") || "–" },
+          { label: ctx.t("soundsDone"), value: LANES.filter((v) => g.byVowel[v] && g.byVowel[v].hit).map((v) => VOWEL_LETTER[v]).join(" ") || "–" },
           ...(avgResp != null ? [{ label: ctx.t("responseTime"), value: `${Math.max(1, Math.round(avgResp / 1000))} s` }] : []),
         ],
       };

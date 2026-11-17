@@ -1,7 +1,7 @@
 // Microphone input: loudness, voice on/off, and pitch, all computed in the browser.
 // No audio is stored or sent anywhere.
 import { speakerBusy } from "./audio.js";
-import { VOWELS, voiceType, vowelDistances, nearestVowel, matchesVowel, directionFrom, formantsFrom, cleanSpectrum, bandEnergy, isHiss } from "./vowel.js";
+import { VOWELS, voiceType, vowelDistances, nearestVowel, matchesVowel, clearVowel, humRatio, HUM_RATIO, directionFrom, formantsFrom, cleanSpectrum, bandEnergy, isHiss } from "./vowel.js";
 
 // ---------- pure helpers (unit tested) ----------
 export function rmsOf(buf) {
@@ -331,6 +331,9 @@ export class Mic {
       if (nowE < roomE * 0.5) for (let i = 0; i < this.bins; i++) this.noise[i] += (this.power[i] - this.noise[i]) * 0.3;
     }
     const clean = cleanSpectrum(this.power, this.noise, this.cleanP);
+    // the hum feature (vowel.js humRatio), smoothed a little
+    const hr = humRatio(clean, this.binHz);
+    this.humRatio = hr == null ? null : this.humRatio == null ? hr : this.humRatio * 0.5 + hr * 0.5;
     const noiseE = this.noise ? bandEnergy(this.noise, this.binHz, 150, 5000) : 1e-10;
     const cleanE = bandEnergy(clean, this.binHz, 150, 5000);
     this.speechRise = 10 * Math.log10(1 + cleanE / Math.max(noiseE, 1e-11));
@@ -356,6 +359,17 @@ export class Mic {
   // Is the child making this vowel? See matchesVowel for lenience.
   isVowel(target, lenience = 0.5) {
     return matchesVowel(this.vowelDist, target, lenience);
+  }
+
+  // A hum "mmm": a real voice (clear pitch) with nearly no energy above 600 Hz. limit: this child's
+  // own limit from the voice check, if it learnt one.
+  isHum(limit = this.humLimit) {
+    return this.periodic && !this.hiss && this.humRatio != null && this.humRatio < (limit || HUM_RATIO);
+  }
+
+  // The strict test (vowel.js clearVowel): this vowel and no other.
+  isClearVowel(target, lenience = 0.5) {
+    return clearVowel(this.vowelDist, target, lenience);
   }
 
   // Up, down or neither for Sky Glide.

@@ -6,7 +6,8 @@ import breeze, { scoreBreeze } from "../js/games/breeze.js";
 import glide, { ringVowels, scoreGlide, LANES } from "../js/games/glide.js";
 import mouth, { moveSequence, moveActive, scoreMouth, LEVELS as MOUTH_LEVELS } from "../js/games/mouth.js";
 import firefly, { spawnZone, scoreFirefly } from "../js/games/firefly.js";
-import garden, { WORD_BANK, LEVELS as GARDEN_LEVELS, splitFocus, scoreGarden, wordList } from "../js/games/garden.js";
+import garden, { LEVELS as GARDEN_LEVELS, splitFocus, scoreGarden, wordList } from "../js/games/garden.js";
+import { markWord, gardenItems } from "../js/kit/wordgarden.js";
 import { detectPitch, toDb, rmsOf, semitones } from "../js/kit/mic.js";
 import { realHand, blendshapeMap } from "../js/kit/vision.js";
 import { starsFor, suggestionFor, buildResult, SCHEMA } from "../js/kit/results.js";
@@ -63,14 +64,14 @@ test("Balloon Breeze scoring", () => {
   assert.equal(scoreBreeze({ roundsDone: 5, rounds: 5, steadyPct: 60 }), 94);
 });
 
-test("Sky Glide ring patterns: all five vowels on every level", () => {
+test("Sky Glide ring patterns: all five sounds on every level", () => {
   glide.levels.forEach((lv) => {
     const v = ringVowels(lv.order, lv.count);
     assert.equal(v.length, lv.count);
-    assert.equal(new Set(v).size, 5, `${lv.name} uses all five vowels`);
+    assert.equal(new Set(v).size, 5, `${lv.name} uses all five sounds`);
   });
-  assert.deepEqual(ringVowels("pairs", 4), ["aah", "aah", "ehh", "ehh"]);
-  assert.deepEqual(LANES, ["uuu", "ooo", "aah", "ehh", "eee"]);
+  assert.deepEqual(ringVowels("pairs", 4), ["mmm", "mmm", "ooo", "ooo"]);
+  assert.deepEqual(LANES, ["mmm", "ooo", "aah", "ehh", "sss"]);
   assert.equal(scoreGlide({ hits: 6, total: 8 }), 75);
 });
 
@@ -93,13 +94,13 @@ test("Firefly Night zones and scoring", () => {
 });
 
 test("Word Garden word bank, highlighting and scoring", () => {
-  for (const sound of ["s", "k", "p"]) {
-    GARDEN_LEVELS.forEach((lv, i) => assert.equal(WORD_BANK[sound][lv.group].length, i === 0 ? 5 : 6, `${sound} ${lv.group}`));
-  }
-  const parts = splitFocus("bicycle", "s").filter((p) => p.focus).map((p) => p.text);
-  assert.deepEqual(parts, ["c"]);
-  assert.deepEqual(splitFocus("chicken", "k").filter((p) => p.focus).map((p) => p.text), ["ck"]);
-  assert.deepEqual(splitFocus("puppy", "p").filter((p) => p.focus).map((p) => p.text), ["p", "pp"]);
+  assert.deepEqual(GARDEN_LEVELS.map((l) => l.group), ["initial", "medial", "final", "mixed", "mix"]);
+  GARDEN_LEVELS.forEach((lv, i) => assert.equal(gardenItems({ sound: "s", levelIndex: i }).length, lv.count, lv.name));
+  const focus = (m) => splitFocus(m, "s").filter((p) => p.focus).map((p) => p.text);
+  assert.deepEqual(focus(markWord("pencil", "s", "medial")), ["c"]);
+  assert.deepEqual(focus(markWord("chicken", "k", "medial")), ["ck"]);
+  assert.deepEqual(focus(markWord("kiss", "s", "final")), ["ss"]);
+  assert.deepEqual(focus(markWord("sun", "s", "initial")), ["s"]);
   assert.equal(scoreGarden([{ result: "clear" }, { result: "needs_practice" }]), 50);
   assert.equal(wordList("s", "initial", [{ word: "sip" }])[0].word, "sip");
 });

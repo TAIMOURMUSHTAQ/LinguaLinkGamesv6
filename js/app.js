@@ -1,5 +1,6 @@
 // LinguaLink Play v2: splash, home, level maps, sticker book, grown-ups area, and game launcher.
 import { getConfig, PREF_KEYS, prefersReducedMotion, GAME_IDS } from "./kit/config.js";
+import { soundsFor } from "./kit/wordgarden.js";
 import { save, load } from "./kit/storage.js";
 import { setLang, t, gameText, levelText, lang } from "./kit/i18n.js";
 import { setSoundEnabled, setMusicEnabled, setVoicePrompts, unlock, startMusic, stopMusic, sfx } from "./kit/audio.js";
@@ -9,7 +10,7 @@ import { describe, perRound, formatDuration, progressByLevel } from "./kit/repor
 import { preload, onLoadProgress, isLoaded, warmEngine } from "./kit/vision.js";
 import { W, H } from "./kit/draw.js";
 
-const VERSION = "6.0.1";
+const VERSION = "6.2.0";
 const cfg = getConfig();
 let runner = null;
 let GAMES = [], byId = {};
@@ -99,7 +100,8 @@ async function runSplash() {
     ...(cfg.lang === "ur" ? [document.fonts.load('400 16px "Noto Nastaliq Urdu"', "ا")] : []),
   ]).catch(() => {}) : Promise.resolve();
   await loadGames((p) => set(0.1 + p * 0.5));
-  await fonts;
+  // Fonts are local and optional; do not hold the first interactive screen hostage to
+  // a browser font promise that can remain pending indefinitely.
   set(0.75);
   renderHome();
   set(1);
@@ -331,8 +333,23 @@ function openStickers() {
 // ---------- grown-ups ----------
 function holdToOpen(btn, ms, fn) {
   let timer = 0;
-  const start = (e) => { if (e.button > 0) return; btn.classList.add("holding"); timer = setTimeout(() => { btn.classList.remove("holding"); fn(); }, ms); };
-  const cancel = () => { clearTimeout(timer); btn.classList.remove("holding"); };
+  let active = false;
+  const start = (e) => {
+    if (e.button > 0 || active) return;
+    active = true;
+    btn.classList.add("holding");
+    timer = setTimeout(() => {
+      if (!active) return;
+      btn.classList.remove("holding");
+      fn();
+    }, ms);
+  };
+  const cancel = () => {
+    active = false;
+    clearTimeout(timer);
+    timer = 0;
+    btn.classList.remove("holding");
+  };
   btn.addEventListener("pointerdown", start);
   ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => btn.addEventListener(ev, cancel));
   btn.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -494,7 +511,11 @@ function renderPick() {
 function fillSettings() {
   $("#setMode").value = cfg.mode;
   $("#setLang").value = cfg.lang;
-  $("#setGarden").value = cfg.gardenSound;
+  // every sound of the word list (for the language Word Garden uses)
+  const gs = $("#setGarden");
+  gs.innerHTML = `<option value="all">${t("gameMix")}</option>` + soundsFor(cfg.gardenLang).map((x) => `<option value="${x.id}">${cfg.gardenLang === "ur" ? x.id : x.ipa}  ${x.example}</option>`).join("");
+  gs.value = cfg.gardenSound;
+  $("#setAccent").value = cfg.gardenAccent || "en-US";
   $("#setSound").checked = !!cfg.sound;
   $("#setMusic").checked = !!cfg.music;
   $("#setVoice").checked = !!cfg.voicePrompts;
@@ -513,6 +534,7 @@ function saveSettings(e) {
   cfg.mode = $("#setMode").value;
   cfg.lang = $("#setLang").value;
   cfg.gardenSound = $("#setGarden").value;
+  cfg.gardenAccent = $("#setAccent").value;
   cfg.sound = $("#setSound").checked;
   cfg.music = $("#setMusic").checked;
   cfg.voicePrompts = $("#setVoice").checked;

@@ -3,9 +3,13 @@
 // 2. URL query parameters (?game=breeze&level=2&mode=touch)
 // 3. Saved per-device preferences (local storage), then defaults.
 import { load } from "./storage.js";
+import { SOUNDS_EN } from "./wordlist.js";
+import { isSound } from "./wordgarden.js";
 
 export const GAME_IDS = ["breeze", "glide", "pitch", "mouth", "firefly", "garden", "letters", "numbers", "balance", "body"];
-export const GARDEN_SOUNDS = ["all", "s", "k", "p", "t", "m", "b", "f"];
+// Word Garden: "all" (the game's mix) or any sound of the articulation word list (kit/wordlist.js)
+export const GARDEN_SOUNDS = ["all", ...SOUNDS_EN.map((s) => s.id)];
+export const GARDEN_ACCENTS = ["en-US", "en-GB", "en-IN"];
 
 const DEFAULTS = {
   mode: "auto",            // auto | sensors | touch
@@ -13,7 +17,9 @@ const DEFAULTS = {
   music: true,             // background music (never plays while a microphone game listens)
   voicePrompts: false,     // spoken instructions (speechSynthesis); off unless a grown-up turns it on
   lang: "en",              // en | ur (interface language)
-  gardenSound: "all",      // target sound for Word Garden: all | s | k | p | t | m | b | f
+  gardenSound: "all",      // Word Garden: "all" (the game's mix) or one sound of the word list (or an Urdu letter)
+  gardenLang: "en",        // Word Garden words: en (default) | ur (Urdu words only)
+  gardenAccent: "en-US",   // the English accent the word check expects: en-US | en-GB | en-IN
   showCamera: true,        // small mirrored camera preview while playing
   onlineSpeech: false,     // Word Garden may use an online speech recogniser (audio leaves the device)
                            // a Laravel page that sets this to false also stops grown-ups turning it on
@@ -47,12 +53,13 @@ function fromQuery() {
   try { q = new URLSearchParams(window.location.search); } catch { return out; }
   const map = { game: "game", level: "level", mode: "mode", lang: "lang", sound: "gardenSound",
                 assignment: "assignmentId", session: "sessionId", embedded: "embedded", adaptive: "adaptive",
-                unlock: "unlockAll", music: "music", splash: "skipSplash", parent: "parentOrigin", variant: "variant" };
+                unlock: "unlockAll", wordlang: "gardenLang", accent: "gardenAccent", music: "music", splash: "skipSplash", parent: "parentOrigin", variant: "variant", tune: "tune" };
   for (const [k, key] of Object.entries(map)) if (q.has(k)) out[key] = q.get(k);
   if (out.embedded !== undefined) out.embedded = out.embedded === "1" || out.embedded === "true";
   if (out.adaptive !== undefined) out.adaptive = bool(out.adaptive);
   if (out.unlockAll !== undefined) out.unlockAll = bool(out.unlockAll);
   if (out.music !== undefined) out.music = bool(out.music);
+  if (out.tune !== undefined) out.tune = out.tune === "1" || out.tune === "true";
   if (out.skipSplash !== undefined) out.skipSplash = out.skipSplash === "0" || out.skipSplash === "false";
   return out;
 }
@@ -60,7 +67,9 @@ function fromQuery() {
 export function normalise(cfg) {
   if (!["auto", "sensors", "touch"].includes(cfg.mode)) cfg.mode = "auto";
   if (!["en", "ur"].includes(cfg.lang)) cfg.lang = "en";
-  if (!GARDEN_SOUNDS.includes(cfg.gardenSound)) cfg.gardenSound = "all";
+  if (cfg.gardenLang !== "ur") cfg.gardenLang = "en";
+  if (!isSound(cfg.gardenSound, cfg.gardenLang)) cfg.gardenSound = "all";
+  if (!GARDEN_ACCENTS.includes(cfg.gardenAccent)) cfg.gardenAccent = "en-US";
   if (cfg.game && !GAME_IDS.includes(cfg.game)) cfg.game = null;
   // up to 10: Air Letters has 10 levels (the game itself limits it to its own number of levels)
   if (cfg.level != null) cfg.level = Math.min(10, Math.max(1, parseInt(cfg.level, 10) || 1));
@@ -86,4 +95,4 @@ export function prefersReducedMotion(cfg) {
   try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
 }
 
-export const PREF_KEYS = ["mode", "sound", "music", "voicePrompts", "lang", "gardenSound", "showCamera", "adaptive", "wholeHand", "unlockAll", "reducedMotion", "onlineSpeech"];
+export const PREF_KEYS = ["mode", "sound", "music", "voicePrompts", "lang", "gardenSound", "gardenLang", "gardenAccent", "showCamera", "adaptive", "wholeHand", "unlockAll", "reducedMotion", "onlineSpeech"];

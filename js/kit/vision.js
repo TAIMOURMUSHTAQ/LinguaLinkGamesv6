@@ -72,6 +72,9 @@ export function faceShape(lm, aspect = 4 / 3) {
     sideShift: Math.abs(midMouthX - p(1).x) / eye,               // lips moved to one side
     jawShift: Math.abs(p(152).x - p(1).x) / eye,                 // chin moved to one side
     lipThick: (d(0, 13) + d(14, 17)) / eye,                      // how much lip shows (less when pressed in)
+    // more cheek widths, lower and higher on the face: a puff shows on different ones on different faces
+    cheekW2: lm[207] && lm[427] ? d(207, 427) / eye : undefined,
+    cheekW3: lm[50] && lm[280] ? d(50, 280) / eye : undefined,
     ...headShape(lm, p, d, eye),
   };
 }
@@ -123,8 +126,10 @@ export function tongueShape(lm, px) {
   const below = red(midX - mw * 0.3, low + mw * 0.04, midX + mw * 0.3, low + mw * 0.42);
   const imgL = red(L.x - mw * 0.5, lipY - mw * 0.15, L.x - mw * 0.08, lipY + mw * 0.25);
   const imgR = red(R.x + mw * 0.08, lipY - mw * 0.15, R.x + mw * 0.5, lipY + mw * 0.25);
+  // above the upper lip, below the nose: a tongue pointing up
+  const above = lm[0] && lm[2] ? red(midX - mw * 0.25, lm[2].y + (lm[0].y - lm[2].y) * 0.15, midX + mw * 0.25, lm[0].y - mw * 0.03) : null;
   // the child's right corner is on the left of the (unmirrored) camera image
-  return { tongueDown: below - cheeks, tongueR: imgL - cheeks, tongueL: imgR - cheeks };
+  return { tongueDown: below - cheeks, tongueR: imgL - cheeks, tongueL: imgR - cheeks, ...(above != null ? { tongueUpR: above - cheeks } : {}) };
 }
 
 // Which fingers are straight, from the 21 hand landmarks: [thumb, index, middle, ring, little].
@@ -375,7 +380,7 @@ export class Tracker {
     try {
       const xs = [lm[61].x, lm[291].x, lm[205].x, lm[425].x], mw = Math.abs(lm[291].x - lm[61].x);
       const x0 = Math.max(0, Math.min(...xs) - mw * 0.6), x1 = Math.min(1, Math.max(...xs) + mw * 0.6);
-      const y0 = Math.max(0, Math.min(lm[205].y, lm[425].y, lm[13].y) - mw * 0.25), y1 = Math.min(1, lm[17].y + mw * 0.5);
+      const y0 = Math.max(0, Math.min(lm[205].y, lm[425].y, lm[13].y, lm[2] ? lm[2].y : 1) - mw * 0.25), y1 = Math.min(1, lm[17].y + mw * 0.5);
       if (!(x1 > x0 && y1 > y0)) return null;
       const CW = 64, CH = 48;
       if (!this._tc) { this._tc = document.createElement("canvas"); this._tc.width = CW; this._tc.height = CH; this._tcx = this._tc.getContext("2d", { willReadFrequently: true }); }

@@ -125,7 +125,26 @@ const ANCHOR_MIN_GAP = 1.0;  // two learned vowels closer than this are one soun
 
 // Sky Glide: each vowel has its own height, from the back of the mouth to the front (the order of
 // the second formant): U "uuu" lowest, then O "ooo", A "aaa", E "ehh", and I "eee" at the top.
-export const VOWEL_HEIGHT = { uuu: 0.1, ooo: 0.3, aah: 0.5, ehh: 0.7, eee: 0.9 };
+export const VOWEL_HEIGHT = { mmm: 0.1, ooo: 0.3, aah: 0.5, ehh: 0.7, sss: 0.9 };
+
+// A hum "mmm": the voice comes out through the nose with the lips closed, so nearly all its energy
+// stays below about 600 Hz. Vowels, even "ooo" and "uuu", have a clear second resonance above it.
+// humRatio: energy 600-3000 Hz over energy 80-600 Hz of the room-cleaned spectrum (small for a hum).
+export function humRatio(clean, binHz) {
+  const low = bandEnergy(clean, binHz, 80, 600);
+  if (!(low > 0)) return null;
+  return bandEnergy(clean, binHz, 600, 3000) / low;
+}
+export const HUM_RATIO = 0.12;   // below this a voiced sound is a hum, unless the voice check learnt better
+// The hum limit learnt from one child's "mmm" and vowels: half way (on a log scale) between the two,
+// or null when the hum was not clearly different from the vowels.
+export function learnHumLimit(humRatios, vowelRatios) {
+  const med = (a) => [...a].sort((x, y) => x - y)[a.length >> 1];
+  if (humRatios.length < 5 || vowelRatios.length < 5) return null;
+  const h = med(humRatios), v = Math.min(...[...vowelRatios].sort((x, y) => x - y).slice(0, Math.max(1, vowelRatios.length >> 2)));
+  if (!(h > 0 && v > h * 1.8)) return null;
+  return Math.sqrt(h * v);
+}
 
 export function nearestVowel(dist) {
   let best = null, d = Infinity;
@@ -141,6 +160,35 @@ export function matchesVowel(dist, target, lenience = 0.5) {
   const reach = 1.5 + 1.3 * lenience;
   const margin = 1.1 * lenience;
   return dist[target] <= reach && dist[target] <= best + margin;
+}
+
+// The strict test used by the games (v6.2): the sound must be the target and nothing else. The target
+// has to be the closest of ALL the reference vowels (A, E, I, O, U), not only of the ones the game
+// practises, and the next closest must be clearly further away. So "eee" never counts as E "ehh",
+// "uuu" never as O, and a sound half way between A and E counts as neither.
+// lenience 1 (first levels): a little further from the reference is fine, a smaller gap is enough.
+// lenience 0 (last levels): close to the reference, with a wide gap.
+// The gap asked for is scaled to how far apart two vowels naturally are: O and U sit close together
+// even in textbook speech, so their gap is smaller than the one between A and E.
+export function clearVowel(dist, target, lenience = 0.5) {
+  if (!dist || dist[target] == null) return false;
+  const reach = 1.8 + 1.0 * lenience;
+  if (dist[target] > reach) return false;
+  const gap = 0.5 + 0.7 * (1 - lenience);
+  for (const v of VOWELS) {
+    if (v === target || dist[v] == null) continue;
+    const need = Math.min(gap, PAIR_GAP * vowelSeparation(target, v));
+    if (dist[v] - dist[target] < need) return false;
+  }
+  return true;
+}
+const PAIR_GAP = 0.35;  // at most this share of two vowels' natural distance is asked for as the gap
+const SEPARATION = {};
+// How far apart two vowels are in textbook speech (a woman's voice), in the same units as the distances.
+export function vowelSeparation(a, b) {
+  const key = a < b ? a + b : b + a;
+  if (SEPARATION[key] == null) SEPARATION[key] = formantDistance(reference(a, 1), reference(b, 1));
+  return SEPARATION[key];
 }
 
 // ---------- spectrum to formants ----------

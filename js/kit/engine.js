@@ -168,6 +168,7 @@ export class Runner {
             <ul class="ov-meta">
               <li><span>${esc(t("controls"))}</span>${esc(controls)}</li>
             </ul>
+            ${this._optionsHtml()}
             ${this._variantHtml()}
             <p class="ov-note">${esc(def.id !== "garden" ? t("privacy") : this.config.onlineSpeech && !this.config.onlineLocked ? t("privacyOnline") : t("privacyGarden"))}</p>
             <div class="ov-actions"><button class="btn btn-primary btn-big" data-act="start">${esc(t("start"))}</button>
@@ -182,7 +183,32 @@ export class Runner {
       save("variant:" + def.id, this.variant);
       this.els.overlay.querySelectorAll("[data-variant]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
     }));
+    // a game's own choices on the card (def.cardOptions): saved like a setting, and the card is drawn again
+    this.els.overlay.querySelectorAll("select[data-option]").forEach((sel) => sel.addEventListener("change", () => {
+      sfx.tap();
+      const key = sel.dataset.option;
+      this.config[key] = sel.value;
+      // saved like the Settings page does: the old-settings clean-up (config.js getConfig) runs first,
+      // and the version mark is set, so the choice is not dropped as an old setting on the next visit
+      const prefs = load("prefs", {});
+      if ((prefs.promptsV || 0) < 2) delete prefs.voicePrompts;
+      if ((prefs.promptsV || 0) < 3) delete prefs.gardenSound;
+      save("prefs", { ...prefs, [key]: sel.value, promptsV: Math.max(3, prefs.promptsV || 0) });
+      if (this.def.onCardOption) this.def.onCardOption(this.config, key, sel.value);
+      this.begin();
+    }));
     setTimeout(() => { const b = this.els.overlay.querySelector("[data-act=start]"); b && b.focus(); }, 30);
+  }
+
+  // A game may offer its own choices on the level card: def.cardOptions(config) -> [{key, label,
+  // options: [{value, label}]}]. Word Garden uses it for the language and the sound to practise.
+  _optionsHtml() {
+    const list = this.def.cardOptions ? this.def.cardOptions(this.config) : [];
+    if (!list.length) return "";
+    return `<div class="ov-options">${list.map((o) => `
+      <label class="ov-option"><span>${esc(o.label)}</span>
+        <select data-option="${esc(o.key)}">${o.options.map((x) => `<option value="${esc(x.value)}"${String(x.value) === String(this.config[o.key]) ? " selected" : ""}>${esc(x.label)}</option>`).join("")}</select>
+      </label>`).join("")}</div>`;
   }
 
   _variantHtml() {

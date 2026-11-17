@@ -134,9 +134,10 @@ try {
     mic.stop();
     return { out, floor: mic.floorDb };
   })()`, { awaitPromise: true, timeoutMs: 90000 });
-  const rows = log.out;
+  const rows = Array.isArray(log && log.out) ? log.out : [];
   const inPart = (name) => {
     const p = TIMELINE.find((x) => x.name === name);
+    if (!p || p.from == null || p.to == null) return [];
     // leave margin at both ends: the fake microphone starts a little late, and the sound fades in
     return rows.filter((r) => r.t > p.from + 1.2 && r.t < p.to - 0.3);
   };
@@ -184,15 +185,16 @@ try {
   const lastH = (run) => { const p = playOf(run); return p.length ? p[p.length - 1].h : null; };
   const band = (run) => { const p = playOf(run).map((s) => s.h); return p.length ? `${Math.min(...p).toFixed(2)}..${Math.max(...p).toFixed(2)}` : "none"; };
   const flyE = await playWith("fly-eee.wav", () => vowel(...VOICE.eee, 8, 0.25), "glide", 0, 45, GL);
-  check("Sky Glide: I (eee) flies the bird to the top", lastH(flyE) > 0.8, `height ${lastH(flyE)}`);
+  // v6.2: I "eee" is not a Sky Glide sound (mmm, O, A, E, sss): the bird glides on
+  check("Sky Glide: eee (not a Sky Glide sound) does not send the bird to a height", playOf(flyE).length > 5 && playOf(flyE).every((s) => Math.abs(s.h - 0.5) < 0.05), `heights ${band(flyE)}`);
   const flyO = await playWith("fly-ooo.wav", () => vowel(...VOICE.ooo, 8, 0.25), "glide", 0, 45, GL);
   check("Sky Glide: ooo flies the bird to the O height", Math.abs(lastH(flyO) - 0.3) < 0.12, `height ${lastH(flyO)}`);
   const flyEh = await playWith("fly-ehh.wav", () => vowel(...VOICE.ehh, 8, 0.25), "glide", 0, 45, GL);
   check("Sky Glide: E (ehh) flies the bird to the E height, not the I height", Math.abs(lastH(flyEh) - 0.7) < 0.12, `height ${lastH(flyEh)}`);
   const flyA = await playWith("fly-aah.wav", () => vowel(...VOICE.aah, 8, 0.25), "glide", 0, 45, GL);
   check("Sky Glide: aaa keeps the bird at the middle (A) height", playOf(flyA).length > 5 && Math.abs(lastH(flyA) - 0.5) < 0.12, `heights ${band(flyA)}`);
-  const quietE = await playWith("fly-quiet.wav", () => vowel(...VOICE.eee, 8, 0.012), "glide", 0, 45, GL);
-  check("Sky Glide: a quiet eee still flies up", lastH(quietE) > 0.8, `height ${lastH(quietE)}`);
+  const quietE = await playWith("fly-quiet.wav", () => vowel(...VOICE.ehh, 8, 0.012), "glide", 0, 45, GL);
+  check("Sky Glide: a quiet E (ehh) still flies to the E height", Math.abs(lastH(quietE) - 0.7) < 0.12, `height ${lastH(quietE)}`);
   const whisperA = await playWith("fly-whisper.wav", () => vowel(290, VOICE.aah[1], 8, 0.02, true), "glide", 0, 45, GL);
   check("Sky Glide: a whispered aaa never sends the bird to the top or bottom", playOf(whisperA).length > 5 && playOf(whisperA).every((s) => s.h > 0.2 && s.h < 0.8), `heights ${band(whisperA)}`);
   // silence: the check asks twice, then play starts with the built-in sounds

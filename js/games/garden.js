@@ -1,5 +1,9 @@
-// WORD GARDEN: articulation practice with words, phrases and sentences.
-// The child sees a picture, can hear the word, then says it. Every clear word grows a flower.
+// WORD GARDEN: practise sounds in words, from the articulation word list (kit/wordlist.js, the same
+// list as LinguaLink360's Articulation page) and no other words.
+// The child sees a picture (or animated word art), can hear the word, then says it. Every clear word
+// grows a flower. On the level card: the language (English, or Urdu with only Urdu words) and the
+// sound: "Game's mix" (many sounds, mixed) or one sound chosen from the list. Levels: the sound at the
+// start, in the middle, at the end, all three, then a big mix (kit/wordgarden.js).
 // Two ways to play, chosen on the level card:
 // - "Game listens": the browser's speech recogniser (kit/speech.js) checks each attempt: on the
 //   device when possible, online only if a grown-up allows it. A match blooms a flower and moves on;
@@ -14,108 +18,31 @@ import { W, H, sky, label, lumi, rr, rng, clamp, ring } from "../kit/draw.js";
 import { sun, cloudLayer, butterflies, bee, flowerRow, motes, rays, spring } from "../kit/scene.js";
 import { speakWord } from "../kit/audio.js";
 import { hasRecogniser, localStatus, WordListener, judgeAlternatives } from "../kit/speech.js";
+import { GARDEN_LEVELS, gardenItems, soundsFor, isSound, nearMiss, normaliseUrdu, editDistance } from "../kit/wordgarden.js";
 import { load, save } from "../kit/storage.js";
+import { t as tr } from "../kit/i18n.js";
 import { clampScore } from "../kit/results.js";
 
-const P = (word, picture) => ({ word, picture });
+// Highlighting comes from the word list's marks ([ ] around the sound's letters, kit/wordgarden.js).
+export const FOCUS = {};
+export const LEVELS = GARDEN_LEVELS.map((l) => ({ ...l, group: l.settings.position }));
 
-// The letters for the target sound are marked with [ ]. Only real target sounds are marked, so
-// the /sh/ in "Wash" and the /z/ in "is" or "glasses" are not.
-export const WORD_BANK = {
-  s: {
-    initial: [P("[s]un", "☀️"), P("[s]ock", "🧦"), P("[s]oap", "🧼"), P("[s]eal", "🦭"), P("[s]andwich", "🥪")],
-    final: [P("bu[s]", "🚌"), P("hou[s]e", "🏠"), P("hor[s]e", "🐎"), P("mou[s]e", "🐭"), P("dre[ss]", "👗"), P("i[c]e", "🧊")],
-    medial: [P("pen[c]il", "✏️"), P("bi[c]ycle", "🚲"), P("gla[ss]es", "👓"), P("ca[s]tle", "🏰"), P("dino[s]aur", "🦕"), P("ba[s]eball", "⚾")],
-    phrase: [P("big [s]un", "☀️"), P("red [s]ock", "🧦"), P("yellow bu[s]", "🚌"), P("my hou[s]e", "🏠"), P("[s]oft [s]oap", "🧼"), P("pink dre[ss]", "👗")],
-    sentence: [P("The [s]un is hot.", "☀️"), P("I [s]ee a [s]eal.", "🦭"), P("The bu[s] is big.", "🚌"), P("A mou[s]e is in the hou[s]e.", "🐭"), P("I ride my bi[c]ycle.", "🚲"), P("Wash with [s]oap.", "🧼")],
-  },
-  k: {
-    initial: [P("[c]at", "🐱"), P("[c]ake", "🎂"), P("[c]ar", "🚗"), P("[c]ow", "🐄"), P("[k]ey", "🔑")],
-    final: [P("boo[k]", "📖"), P("du[ck]", "🦆"), P("so[ck]", "🧦"), P("mil[k]", "🥛"), P("tru[ck]", "🚚"), P("ro[ck]", "🪨")],
-    medial: [P("coo[k]ie", "🍪"), P("mon[k]ey", "🐒"), P("chi[ck]en", "🐔"), P("ro[ck]et", "🚀"), P("pump[k]in", "🎃"), P("ja[ck]et", "🧥")],
-    phrase: [P("[c]ute [c]at", "🐱"), P("big [c]ake", "🎂"), P("red [c]ar", "🚗"), P("my boo[k]", "📖"), P("yellow du[ck]", "🦆"), P("[c]oo[k]ie jar", "🍪")],
-    sentence: [P("The [c]at [c]an jump.", "🐱"), P("I li[k]e [c]ake.", "🎂"), P("The du[ck] [c]an swim.", "🦆"), P("My [c]ar is red.", "🚗"), P("The mon[k]ey is funny.", "🐒"), P("Loo[k] at the ro[ck]et.", "🚀")],
-  },
-  p: {
-    initial: [P("[p]ig", "🐷"), P("[p]en", "🖊️"), P("[p]izza", "🍕"), P("[p]anda", "🐼"), P("[p]ear", "🍐")],
-    final: [P("cu[p]", "☕"), P("ma[p]", "🗺️"), P("shi[p]", "🚢"), P("soa[p]", "🧼"), P("shee[p]", "🐑"), P("ca[p]", "🧢")],
-    medial: [P("a[pp]le", "🍎"), P("pu[pp]y", "🐶"), P("pa[p]er", "📄"), P("ha[pp]y", "😀"), P("hi[pp]o", "🦛"), P("tea[p]ot", "🫖")],
-    phrase: [P("[p]ink [p]ig", "🐷"), P("hot [p]izza", "🍕"), P("my cu[p]", "☕"), P("big shi[p]", "🚢"), P("ha[pp]y [p]u[pp]y", "🐶"), P("red a[pp]le", "🍎")],
-    sentence: [P("The [p]ig is [p]ink.", "🐷"), P("I like [p]izza.", "🍕"), P("[P]ass the cu[p].", "☕"), P("The [p]u[pp]y can [p]lay.", "🐶"), P("The shi[p] is big.", "🚢"), P("[P]ut the a[pp]le u[p].", "🍎")],
-  },
-  t: {
-    initial: [P("[t]ree", "🌳"), P("[t]iger", "🐯"), P("[t]oy", "🧸"), P("[t]rain", "🚂"), P("[t]urtle", "🐢")],
-    final: [P("ca[t]", "🐱"), P("ha[t]", "🎩"), P("boa[t]", "⛵"), P("foo[t]", "🦶"), P("coa[t]", "🧥"), P("be[d]", "🛏️")].slice(0, 5).concat([P("nu[t]", "🌰")]),
-    medial: [P("wa[t]er", "💧"), P("bu[tt]er", "🧈"), P("bu[tt]on", "🔘"), P("ki[tt]en", "🐱"), P("guita[r]", "🎸")].slice(0, 4).concat([P("pho[t]o", "📷"), P("po[t]ato", "🥔")]),
-    phrase: [P("big [t]ree", "🌳"), P("red ha[t]", "🎩"), P("my [t]oy", "🧸"), P("fast [t]rain", "🚂"), P("hot wa[t]er", "💧"), P("white boa[t]", "⛵")],
-    sentence: [P("The [t]iger is big.", "🐯"), P("I see a [t]ree.", "🌳"), P("My ca[t] is black.", "🐱"), P("The [t]rain is fast.", "🚂"), P("Pu[t] on your ha[t].", "🎩"), P("I drink wa[t]er.", "💧")],
-  },
-  m: {
-    initial: [P("[m]oon", "🌙"), P("[m]ilk", "🥛"), P("[m]ouse", "🐭"), P("[m]ango", "🥭"), P("[m]onkey", "🐒")],
-    final: [P("dru[m]", "🥁"), P("ar[m]", "💪"), P("ho[m]e", "🏠"), P("swi[m]", "🏊"), P("plu[m]", "🍑"), P("ice crea[m]", "🍦")],
-    medial: [P("ha[mm]er", "🔨"), P("le[m]on", "🍋"), P("ca[m]el", "🐫"), P("to[m]ato", "🍅"), P("su[mm]er", "☀️"), P("co[m]b", "🪮")].slice(0, 5).concat([P("ani[m]al", "🐘")]),
-    phrase: [P("big [m]oon", "🌙"), P("cold [m]ilk", "🥛"), P("[m]y [m]ango", "🥭"), P("red dru[m]", "🥁"), P("little [m]ouse", "🐭"), P("funny [m]onkey", "🐒")],
-    sentence: [P("The [m]oon is bright.", "🌙"), P("I drink [m]ilk.", "🥛"), P("[M]y [m]om is here.", "🏠"), P("The [m]onkey can jump.", "🐒"), P("I like ice crea[m].", "🍦"), P("I hit the dru[m].", "🥁")],
-  },
-  b: {
-    initial: [P("[b]all", "⚽"), P("[b]ag", "🎒"), P("[b]anana", "🍌"), P("[b]ird", "🐦"), P("[b]ear", "🐻")],
-    final: [P("cra[b]", "🦀"), P("tu[b]", "🛁"), P("cu[b]e", "🧊"), P("we[b]", "🕸️"), P("ro[b]e", "🥋"), P("bi[b]", "👶")],
-    medial: [P("ta[b]le", "🍽️"), P("ra[bb]it", "🐰"), P("ro[b]ot", "🤖"), P("ru[bb]er", "🧽"), P("ca[bb]age", "🥬"), P("ze[b]ra", "🦓")],
-    phrase: [P("big [b]all", "⚽"), P("red [b]ag", "🎒"), P("yellow [b]anana", "🍌"), P("little [b]ird", "🐦"), P("my ra[bb]it", "🐰"), P("funny ro[b]ot", "🤖")],
-    sentence: [P("The [b]ird can fly.", "🐦"), P("I kick the [b]all.", "⚽"), P("My [b]ag is red.", "🎒"), P("The ra[bb]it is white.", "🐰"), P("I eat a [b]anana.", "🍌"), P("The [b]ear is big.", "🐻")],
-  },
-  f: {
-    initial: [P("[f]ish", "🐟"), P("[f]ive", "🖐️"), P("[f]lower", "🌸"), P("[f]ox", "🦊"), P("[f]ork", "🍴")],
-    final: [P("lea[f]", "🍃"), P("kni[f]e", "🔪"), P("el[f]", "🧝"), P("wol[f]", "🐺"), P("scar[f]", "🧣"), P("gira[ff]e", "🦒")],
-    medial: [P("co[ff]ee", "☕"), P("wa[ff]le", "🧇"), P("so[f]a", "🛋️"), P("bu[ff]alo", "🐃"), P("sa[f]e", "🔐"), P("mu[ff]in", "🧁")],
-    phrase: [P("big [f]ish", "🐟"), P("red [f]lower", "🌸"), P("green lea[f]", "🍃"), P("[f]unny [f]ox", "🦊"), P("soft so[f]a", "🛋️"), P("sweet mu[ff]in", "🧁")],
-    sentence: [P("The [f]ish can swim.", "🐟"), P("I see a [f]lower.", "🌸"), P("The [f]ox is red.", "🦊"), P("A lea[f] is green.", "🍃"), P("I eat with a [f]ork.", "🍴"), P("The gira[ff]e is tall.", "🦒")],
-  },
-};
-
-// Fallback highlighting for custom words that have no [ ] marks.
-export const FOCUS = { s: /ss|s(?!h)|c(?=[eiy])/gi, k: /ck|k|c(?![eiyh])/gi, p: /pp|p(?!h)/gi, t: /tt|t(?!h)/gi, m: /mm|m/gi, b: /bb|b/gi, f: /ff|f/gi };
-
-export const LEVELS = [
-  { name: "Seeds", goal: "Say each word. The sound is at the start.", group: "initial", settings: { position: "initial" } },
-  { name: "Sprouts", goal: "Now the sound is at the end of the word.", group: "final", settings: { position: "final" } },
-  { name: "Buds", goal: "The sound is in the middle of the word.", group: "medial", settings: { position: "medial" } },
-  { name: "Blooms", goal: "Say two-word phrases.", group: "phrase", settings: { position: "phrase" } },
-  { name: "Full Garden", goal: "Say short sentences.", group: "sentence", settings: { position: "sentence" } },
-];
+// The items of a level (kit/wordgarden.js gardenItems), kept under its old name for LinguaLink360.
+export function wordList(sound, group, custom, levelIndex = 0, lang = "en", play = 0) {
+  return gardenItems({ lang, sound, levelIndex, play, custom, position: group });
+}
 
 export const MAX_ATTEMPTS = 3;
-const RETRY_SEC = 3;            // the "Try again" prompt, then the game listens again by itself
+const RETRY_SEC = 2.8;          // the "Try again" prompt, then the game listens again by itself
 const BLOOM_SEC = 1.4;          // time to enjoy the new flower before the next word
 const NOTE_SEC = 2;             // "Good try! Next word" after the last try
 const AUTO_CONTINUE_SEC = 3.5;  // voice checking: time for an adult to step in before moving on
-const NO_RESULT_SEC = 3;        // the child spoke but the recogniser returned no words
+const NO_RESULT_SEC = 6;        // the child spoke but the recogniser returned no words (online results can be slow)
+const FINISH_AFTER_SEC = 1.2;   // silence after the word: the recogniser is asked to finish (it keeps what it heard)
 const SILENT_MODEL_SEC = 10;    // nothing said for this long: the game says the word once
 
 export function plainWord(word) {
   return String(word).replace(/[[\]]/g, "");
-}
-
-// customWords may be: one list for all levels; a list per level ([[...], ...]);
-// or a list per position ({initial: [...], ...}).
-export function wordList(sound, group, custom, levelIndex = 0) {
-  let list = null;
-  if (Array.isArray(custom) && custom.length) list = Array.isArray(custom[0]) ? custom[levelIndex] : custom;
-  else if (custom && typeof custom === "object") list = custom[group];
-  if (Array.isArray(list) && list.length) return list.map((w) => ({ word: String(w.word), picture: w.picture || "⭐", sound: sound === "all" ? null : sound }));
-  if (sound === "all" || !WORD_BANK[sound]) return mixedList(group);
-  return WORD_BANK[sound][group].map((it) => ({ ...it, sound }));
-}
-
-// "All sounds": every sound takes turns, so each session practises the whole set.
-export const MIXED_ITEMS = 8;
-export function mixedList(group) {
-  const sounds = Object.keys(WORD_BANK), out = [];
-  for (let i = 0; out.length < MIXED_ITEMS; i++) {
-    const sound = sounds[i % sounds.length], list = WORD_BANK[sound][group];
-    out.push({ ...list[Math.floor(i / sounds.length) % list.length], sound });
-  }
-  return out;
 }
 
 // Split a word into [{text, focus}] parts for highlighting.
@@ -229,14 +156,65 @@ function drawSetupCard(c, t, setup) {
   para(c, t("wcSetupAdult"), 640, y, 720, 25);
 }
 
-function drawWordCard(c, item, sound, attempts, state, t, cueStep = 0, maxAttempts = MAX_ATTEMPTS) {
+// Animated word art, for words without a picture (and every Urdu word): big shiny letters in a moving
+// rainbow, a light sweeping across, sparkles around, and a gentle bounce.
+const ART = ["#ff595e", "#ff924c", "#ffca3a", "#8ac926", "#1982c4", "#6a4c93", "#ff595e"];
+const ART_DEEP = ["#d00000", "#e85d04", "#2b9348", "#0077b6", "#7209b7", "#d00000"];
+function drawWordArt(c, text, x, y, tm, rtl = false) {
+  const plain = plainWord(text);
+  const size = rtl ? (plain.length > 8 ? 84 : 110) : plain.length > 9 ? 66 : plain.length > 6 ? 82 : 100;
+  // Nastaliq strokes are thin: a thin outline and deeper colours keep Urdu words bold and readable
+  const colors = rtl ? ART_DEEP : ART;
+  c.save();
+  c.translate(x, y + Math.sin(tm * 2.2) * 5);
+  c.rotate(Math.sin(tm * 1.3) * 0.02);
+  c.font = rtl ? `700 ${size}px "Noto Nastaliq Urdu", serif` : `800 ${size}px "Baloo 2", "Lexend", system-ui, sans-serif`;
+  c.textAlign = "center"; c.textBaseline = "middle";
+  if (rtl) c.direction = "rtl";
+  const w = Math.max(60, c.measureText(plain).width);
+  // a soft glow behind
+  const glow = c.createRadialGradient(0, 0, 10, 0, 0, w * 0.75);
+  glow.addColorStop(0, "rgba(255,240,180,0.85)"); glow.addColorStop(1, "rgba(255,240,180,0)");
+  c.fillStyle = glow; c.beginPath(); c.ellipse(0, 0, w * 0.75, size * 0.95, 0, 0, Math.PI * 2); c.fill();
+  // the moving rainbow letters with a thick white outline and a drop shadow
+  const g = c.createLinearGradient(-w / 2 + Math.sin(tm) * 40, 0, w / 2 + Math.sin(tm) * 40, 0);
+  colors.forEach((col, i) => g.addColorStop(((i / (colors.length - 1)) + tm * 0.12) % 1, col));
+  c.lineJoin = "round"; c.lineWidth = size * (rtl ? 0.05 : 0.16); c.strokeStyle = "#ffffff";
+  c.shadowColor = "rgba(43,45,66,0.25)"; c.shadowBlur = 14; c.shadowOffsetY = 6;
+  c.strokeText(plain, 0, 0);
+  c.shadowColor = "transparent";
+  c.fillStyle = g; c.fillText(plain, 0, 0);
+  // a thin dark edge keeps the bright colours crisp on the white card
+  c.lineWidth = Math.max(1.5, size * 0.02); c.strokeStyle = "rgba(43,45,66,0.55)"; c.strokeText(plain, 0, 0);
+  // sparkles around the word
+  for (let k = 0; k < 6; k++) {
+    const a = tm * 0.9 + (k * Math.PI * 2) / 6, r = w * 0.55 + Math.sin(tm * 3 + k) * 10;
+    const px = Math.cos(a) * r, py = Math.sin(a) * size * 0.75, s = 5 + 4 * Math.abs(Math.sin(tm * 4 + k));
+    c.fillStyle = ART[k % ART.length];
+    c.beginPath(); for (let j = 0; j < 8; j++) { const rr2 = j % 2 ? s * 0.4 : s; const aa = (j * Math.PI) / 4; c.lineTo(px + Math.cos(aa) * rr2, py + Math.sin(aa) * rr2); } c.fill();
+  }
+  c.restore();
+}
+
+function drawWordCard(c, item, sound, attempts, state, t, cueStep = 0, maxAttempts = MAX_ATTEMPTS, tm = 0) {
   c.save(); c.shadowColor = "rgba(0,0,0,0.18)"; c.shadowBlur = 24; c.shadowOffsetY = 8;
   c.fillStyle = "#ffffff"; rr(c, 380, 70, 520, 360, 34); c.fill(); c.restore();
-  c.font = '150px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-  c.textAlign = "center"; c.textBaseline = "middle";
-  c.fillText(item.picture, 640, 205);
+  const urdu = item.lang === "ur";
+  if (item.picture) {
+    c.font = '150px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+    c.textAlign = "center"; c.textBaseline = "middle";
+    c.fillText(item.picture, 640, 205);
+  } else drawWordArt(c, item.word, 640, 210, tm, urdu);
   const plain = plainWord(item.word);
-  const parts = cueStep <= -2 ? [] : cueStep === -1 ? [{ text: plain, focus: false }] : splitFocus(item.word, item.sound || sound);
+  if (urdu) {
+    // Urdu letters join, so the word is not split: the letter being practised is shown beside it
+    if (item.sound) label(c, `${t("letterLbl")}: ${item.sound} · ${t("pos_" + (item.position || "mixed"))}`, 640, 365, { size: 30, color: "#2b2d42", shadow: false, weight: 600 });
+    if (attempts > 0 && state !== "check") label(c, t("tryOf", { n: attempts + 1, m: maxAttempts }), 640, 452, { size: 24, color: "#5c5f7a", shadow: false, weight: 500 });
+    return;
+  }
+  // picture only (the hardest cue) needs a picture; a word without one keeps its letters
+  const pictureOnly = cueStep <= -2 && item.picture;
+  const parts = pictureOnly ? [] : cueStep <= -1 ? [{ text: plain, focus: false }] : splitFocus(item.word, item.sound || sound);
   const size = plain.length > 18 ? 38 : plain.length > 12 ? 46 : 58;
   c.font = `700 ${size}px "Lexend", "Baloo 2", system-ui, sans-serif`;
   const total = parts.reduce((a, p) => a + c.measureText(p.text).width, 0);
@@ -248,7 +226,7 @@ function drawWordCard(c, item, sound, attempts, state, t, cueStep = 0, maxAttemp
     if (p.focus) { c.fillRect(x, 365 + size * 0.48, c.measureText(p.text).width, 5); }
     x += c.measureText(p.text).width;
   }
-  if (cueStep <= -2) label(c, t("whatIsThis"), 640, 365, { size: 40, color: "#5c5f7a", shadow: false });
+  if (pictureOnly) label(c, t("whatIsThis"), 640, 365, { size: 40, color: "#5c5f7a", shadow: false });
   if (attempts > 0 && state !== "check") label(c, t("tryOf", { n: attempts + 1, m: maxAttempts }), 640, 452, { size: 24, color: "#5c5f7a", shadow: false, weight: 500 });
 }
 
@@ -267,25 +245,44 @@ const def = {
     { id: "auto", icon: "👂", label: "Game listens", note: "The game checks each word. Right: a flower blooms. If not: try again or go to the next word." },
     { id: "adult", icon: "🧑", label: "Grown-up checks", note: "A grown-up taps “Said it”, then Clear or Try again." },
   ],
-  skills: ["Clear words", "Sounds at the start, middle and end", "Phrases and sentences"],
+  skills: ["Clear words", "Sounds at the start, middle and end", "English or Urdu words"],
   howTo: [
-    ["🖼️", "Look at the picture and the word."],
+    ["🖼️", "Look at the picture and the word. Choose the language and the sound on this card."],
     ["🗣️", "Say the word clearly. Tap “Hear it” to listen first."],
     ["🌸", "Said right, a flower blooms. If not, try again or go to the next word."],
     ["🧑", "A grown-up can check the words instead, if you choose that on this card."],
   ],
   levels: LEVELS,
 
-  drawPreview(c, li, t = 0) { drawGarden(c, t, li, [{ t: 1 }, { t: 1 }, { t: 0.6 }]); drawWordCard(c, WORD_BANK.s[LEVELS[li].group][0], "s", 0, "listen", (k) => k); },
+  // On the level card: the language of the words, and the sound to practise (or the game's mix).
+  cardOptions(config) {
+    const lang = config.gardenLang === "ur" ? "ur" : "en";
+    return [
+      { key: "gardenLang", label: tr("gardenLangLbl"), options: [{ value: "en", label: "English" }, { value: "ur", label: "اردو" }] },
+      { key: "gardenSound", label: tr("soundLbl"), options: [{ value: "all", label: tr("gameMix") }, ...soundsFor(lang).map((x) => ({ value: x.id, label: lang === "ur" ? `${x.id}  (${x.example})` : `${x.ipa}  ${x.example}` }))] },
+    ];
+  },
+  // a new language has its own sounds: the choice goes back to the game's mix if it does not fit
+  onCardOption(config, key) {
+    if (key === "gardenLang" && !isSound(config.gardenSound, config.gardenLang === "ur" ? "ur" : "en")) config.gardenSound = "all";
+  },
+
+  drawPreview(c, li, t = 0) { drawGarden(c, t, li, [{ t: 1 }, { t: 1 }, { t: 0.6 }]); drawWordCard(c, gardenItems({ levelIndex: li })[0], "all", 0, "listen", (k) => k, 0, MAX_ATTEMPTS, t); },
 
   create(ctx) {
     const L = ctx.level;
-    const sound = ctx.config.gardenSound || "all";
-    const items = wordList(sound, L.group, ctx.config.customWords, ctx.levelIndex);
+    const lang = ctx.config.gardenLang === "ur" ? "ur" : "en";
+    const sound = isSound(ctx.config.gardenSound || "all", lang) ? ctx.config.gardenSound || "all" : "all";
+    // each play of a level moves on through the word list, so the words change from play to play
+    const playKey = `garden:play:${lang}:${sound}:${ctx.levelIndex}`;
+    const play = load(playKey, 0) || 0;
+    try { save(playKey, play + 1); } catch {}
+    const items = gardenItems({ lang, sound, levelIndex: ctx.levelIndex, play, custom: ctx.config.customWords });
+    const recLang = lang === "ur" ? "ur-PK" : ctx.config.gardenAccent || "en-US";
     const sensors = ctx.mode === "sensors" && ctx.mic;
     const wantsAuto = sensors && ctx.variant !== "adult";
     const g = {
-      done: false, i: 0, state: "listen", attempts: 0, results: [], grown: [], voicedFor: 0, silentFor: 0, heard: false,
+      done: false, i: 0, state: wantsAuto ? "setup" : "listen", attempts: 0, results: [], grown: [], voicedFor: 0, silentFor: 0, heard: false,
       clipUrl: null, rec: null, chunks: [], stateT: 0, timers: [], quietT: 0, autoModelled: false, periodicT: 0,
       // How attempts are judged: "auto" (speech recogniser), "voice" (the game hears the child speak
       // and moves on unless an adult steps in), "adult". "pending" while finding out.
@@ -294,8 +291,11 @@ const def = {
       checkFailed: false,  // the recogniser stopped working during this session
       everHeard: false,    // the recogniser has returned words, so it works here
       noWords: 0,          // the child spoke but no words came back, before everHeard
-      lastHeard: "", noteT: 0, setup: null, next: null,
+      lastHeard: "", noteT: 0, setup: { online: false, failed: false }, next: null,
+      useTrack: true,      // give the recogniser the game's microphone; switched off if it hears nothing through it
+      deaf: 0,             // listens where the child spoke but no sound reached the recogniser
     };
+    g.items = items;       // this play's words (read by tests and the session report)
     let listener = null;
     // Adaptive cueing (the standard cueing hierarchy):
     //   easier after 2 misses in a row: the word is said aloud first (+1), then also 4 tries instead of 3 (+2)
@@ -306,7 +306,7 @@ const def = {
     const later = (fn, ms) => g.timers.push(setTimeout(fn, ms));
     // While the word is being said aloud, the microphone and the recogniser are ignored
     // (audio.speakerBusy), and the child's attempt only counts once the speech has finished.
-    const speak = () => { g.heard = false; g.voicedFor = 0; listener && listener.stop(); speakWord(plainWord(cur().word), "en"); };
+    const speak = () => { g.heard = false; g.voicedFor = 0; listener && listener.stop(); speakWord(plainWord(cur().word), lang); };
     const modelIfHelped = () => { if (g.adaptive.step >= 1) later(speak, 350); };
 
     const stopRec = () => new Promise((resolve) => {
@@ -354,8 +354,10 @@ const def = {
     };
     const toListen = () => {
       g.state = "listen"; g.stateT = 0; g.heard = false; g.voicedFor = 0; g.silentFor = 0; g.quietT = 0; g.periodicT = 0;
+      g.recSound = false;  // this attempt: did any sound reach the recogniser (over all its listens)?
       setListenControls();
       modelIfHelped();
+      if (g.checkBy === "auto" && listener && !listener.running && !listener.broken && !ctx.mic.selfSound) listener.start();
     };
 
     // "voice" and "adult" checking: the adult decides. In "voice" mode the game moves on by itself
@@ -378,15 +380,21 @@ const def = {
       toListen();
     };
 
-    // "auto" checking: the recogniser heard something.
-    const onHeard = async (alts) => {
+    // "auto" checking: the recogniser heard something. Early (interim) results count as soon as they
+    // match, so the flower can bloom while the child is still speaking; a final result that does not
+    // match is a try. A near miss in spelling counts only if the practised sound is still there.
+    const near = (h, w) => (lang === "ur"
+      ? (() => { const a = normaliseUrdu(h), b = normaliseUrdu(w); return a === b || (b.length >= 4 && editDistance(a, b) <= 1); })()
+      : w === plainWord(cur().word).toLowerCase() && nearMiss(h, cur().word));
+    const onHeard = async (alts, final = true) => {
       if (g.state !== "listen") return;
-      listener && listener.stop();
-      g.everHeard = true; g.noWords = 0;
+      g.everHeard = true; g.noWords = 0; g.deaf = 0;
       const it = cur();
-      const r = judgeAlternatives(alts, plainWord(it.word), focusWords(it.word, it.sound || sound));
+      const r = judgeAlternatives(alts, plainWord(it.word), lang === "ur" ? [] : focusWords(it.word, it.sound || sound), near);
       g.lastHeard = r.heard;
-      ctx.event("auto_check", { item: plainWord(it.word), attempt: g.attempts + 1, heard: r.heard, ok: r.ok, words_matched: r.matched, words_total: r.total });
+      if (!r.ok && !final) return;          // still listening: an early result may change
+      listener && listener.stop();
+      ctx.event("auto_check", { item: plainWord(it.word), attempt: g.attempts + 1, heard: r.heard, ok: r.ok, early: !final, words_matched: r.matched, words_total: r.total });
       await stopRec();
       if (g.state !== "listen" || cur() !== it) return;
       if (r.ok) record("clear", "auto");
@@ -407,7 +415,7 @@ const def = {
       listener && listener.stop();
       g.checkBy = "auto"; g.checker = mode; g.setup = null;
       const track = ctx.mic.stream && ctx.mic.stream.getAudioTracks ? ctx.mic.stream.getAudioTracks()[0] : null;
-      listener = new WordListener({ lang: "en-US", local: mode === "local", onHeard, track });
+      listener = new WordListener({ lang: recLang, local: mode === "local", onHeard, track, useTrack: g.useTrack });
       ctx.event("word_check", { mode });
       if (g.state === "setup") toListen();
       else if (g.state === "listen") setListenControls();
@@ -449,7 +457,7 @@ const def = {
       listener && listener.stop();
       stopRec();
       const it = cur();
-      g.results.push({ item: plainWord(it.word), sound: it.sound || null, attempts: g.attempts + (result === "clear" || result === "said" ? 1 : 0), result, judged_by: by, voice_detected: g.heard, cue: cueName(g.adaptive.step) });
+      g.results.push({ item: plainWord(it.word), sound: it.sound || null, position: it.position || null, attempts: g.attempts + (result === "clear" || result === "said" ? 1 : 0), result, judged_by: by, voice_detected: g.heard, cue: cueName(g.adaptive.step) });
       if (result === "clear" && g.attempts === 0) g.adaptive.success(ctx.time);
       ctx.event("item_result", { item: plainWord(it.word), result, judged_by: by, attempts: g.attempts + (result === "clear" || result === "said" ? 1 : 0) });
       if (result === "clear" || result === "said") {
@@ -471,10 +479,12 @@ const def = {
     };
 
     g.start = async () => {
-      setListenControls();
-      modelIfHelped();
-      if (!wantsAuto) return;
-      const status = await localStatus("en-US");
+      if (!wantsAuto) {
+        setListenControls();
+        modelIfHelped();
+        return;
+      }
+      const status = await localStatus(recLang);
       if (g.done || g.destroyed) return;
       if (status === "available") { useChecker("local"); return; }
       if (canOnline() && ctx.config.onlineSpeech) useChecker("online");
@@ -488,7 +498,7 @@ const def = {
       for (const f of g.grown) f.t = Math.min(1, f.t + dt * 1.5);
       g.noteT = Math.max(0, g.noteT - dt);
       if (g.state === "bloom" && g.stateT > BLOOM_SEC) g.next();
-      if (g.state === "retry" && g.stateT > RETRY_SEC) toListen();
+      if (g.state === "retry" && g.stateT >= RETRY_SEC) toListen();
       // voice checking moves on by itself when no adult steps in
       if (g.state === "check" && g.checkBy === "voice" && g.stateT > AUTO_CONTINUE_SEC) record("said", "voice");
       if (g.state !== "listen" || !sensors) return;
@@ -498,6 +508,7 @@ const def = {
         listener.watch();
         if (listener.broken) { checkerFailed("recogniser_unavailable"); return; }
         if (!listener.running && g.quietT > 0.3) listener.start();
+        if (listener.heardSound) g.recSound = true;
       }
       // A spoken word needs a moment of real voice: "pig" or "cat" count, but a hiss, a clap or a
       // cough alone does not. Short plosive words are over quickly, so the time asked for is short.
@@ -507,12 +518,24 @@ const def = {
         g.silentFor += dt;
         if (!g.heard) g.voicedFor = Math.max(0, g.voicedFor - dt);
         if (g.heard && g.checkBy === "voice" && g.silentFor > 0.6) toCheck(true);
+        // the word is over: ask the recogniser to finish, keeping what it heard
+        if (g.heard && g.checkBy === "auto" && g.silentFor > FINISH_AFTER_SEC && listener && listener.running) listener.finish();
         // The child spoke but no words came back. Once the recogniser has proved it works, that
         // counts as a try. Before that it may be the recogniser's fault, so the child is not marked down.
         if (g.heard && g.checkBy === "auto" && g.silentFor > NO_RESULT_SEC) {
-          ctx.event("auto_check", { item: plainWord(cur().word), attempt: g.attempts + 1, heard: "", ok: false });
+          const deaf = !g.recSound && !listener.heardSound;
+          ctx.event("auto_check", { item: plainWord(cur().word), attempt: g.attempts + 1, heard: "", ok: false, recogniser_heard_sound: !deaf });
           listener.stop(); stopRec();
           g.lastHeard = "";
+          // The game heard the child, but no sound reached the recogniser twice: the microphone given to
+          // it delivers silence on this device. Switch microphone (the game's own, or the default).
+          if (deaf && !g.micSwitched && ++g.deaf >= 2) {
+            g.deaf = 0; g.useTrack = !g.useTrack; g.micSwitched = true;   // once; after that the usual fallback
+            ctx.event("word_check_microphone", { use_game_microphone: g.useTrack });
+            useChecker(g.checker);
+            toRetry();
+            return;
+          }
           if (g.everHeard) autoMiss();
           else if (++g.noWords >= 2) checkerFailed("no_words");
           else toRetry();
@@ -535,7 +558,7 @@ const def = {
         if (g.cardFor !== g.i) { g.cardFor = g.i; g.cardAt = ctx.time; }
         const k = ctx.reduced ? 1 : spring(ctx.time - g.cardAt) * (g.state === "bloom" ? 1 + Math.sin(g.stateT * 7) * 0.02 : 1);
         c.save(); c.translate(640, 250 + (ctx.reduced ? 0 : Math.sin(ctx.time * 1.6) * 4)); c.scale(k, k); c.translate(-640, -250);
-        drawWordCard(c, cur(), sound, g.attempts, g.state, ctx.t, g.adaptive.step, maxAttempts());
+        drawWordCard(c, cur(), sound, g.attempts, g.state, ctx.t, g.adaptive.step, maxAttempts(), tm);
         c.restore();
       }
       lumi(c, 1060, 300, 1.1, { t: ctx.time, mood: g.state === "check" || g.state === "retry" || g.state === "bloom" ? "wow" : "happy" });
@@ -579,9 +602,10 @@ const def = {
       return {
         completed: g.results.length >= items.length,
         score: scoreGarden(g.results, items.length),
-        settings: { items: items.length, target_sound: sound, variant: wantsAuto ? "auto" : "adult" },
+        settings: { items: items.length, target_sound: sound, language: lang, variant: wantsAuto ? "auto" : "adult" },
         metrics: {
           target_sound: sound,
+          language: lang,
           position: L.group,
           items_total: items.length,
           items_answered: g.results.length,
@@ -602,7 +626,7 @@ const def = {
         summary: [
           { label: ctx.t("clearLbl"), value: `${clear + said}/${items.length}` },
           { label: ctx.t("clearFirst"), value: String(firstTry) },
-          { label: ctx.t("soundLbl"), value: `${sound === "all" ? ctx.t("allSounds") : `/${sound}/`} · ${ctx.t("pos_" + L.group)}` },
+          { label: ctx.t("soundLbl"), value: `${sound === "all" ? ctx.t("gameMix") : (soundsFor(lang).find((x) => x.id === sound) || {}).ipa || sound} · ${ctx.t("pos_" + L.group)}` },
         ],
       };
     };

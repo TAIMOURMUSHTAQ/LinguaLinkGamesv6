@@ -1,5 +1,48 @@
 # Changelog
 
+## 6.2.0 (2026-11-17)
+
+Vowels at phoneme level in Balloon Breeze, a sound mix in Sky Glide, new Fish Feast moves with a puff
+check, and Word Garden built on the articulation word list. See `docs/detection-hurdles.md`.
+
+### Balloon Breeze
+- Only **A "aaa", E "ehh" and O "ooo"**. A strict test: the sound must be closest to the target among
+  all five reference vowels, with a clear gap to the next one, so A, E and O are never taken for each
+  other, and "eee", "uuu", a hum or a hiss never count. The sound must last a moment before the balloon
+  fills. The voice check learns the child's own A, E and O.
+
+### Sky Glide
+- Steered by a **mix of sounds**: from the bottom, a hum "mmm", O, A, E and a hiss "sss". The voice
+  check also learns the child's hum.
+
+### Fish Feast
+- Removed: surprised, sad and cross faces. Added: **tongue up**; "tongue out" is now **tongue down**.
+- **Puff check**: before the first puff the child puffs for 3 seconds and the game learns that face's
+  puff from five signals (the face model's score, three cheek widths, the cheeks coming forward).
+- `?tune=1` shows the live face numbers on screen, for tuning on a real device.
+
+### Word Garden
+- Words come **only from the articulation word list** (the same list as LinguaLink360's Articulation
+  page): 24 English sounds and 38 Urdu letters, each at the start, middle and end of words.
+- On the level card: **language** (English by default, or Urdu with only Urdu words) and **sound**
+  ("Game's mix" or any one sound of the list). Levels: start, middle, end, all three, then a big mix.
+  Each play moves on through the list, so the words change.
+- Pictures where one fits the word; every other word (and every Urdu word) is **animated word art**.
+- **Detection fixes**: early results count, a slow online result is no longer thrown away, a
+  microphone that delivers silence to the recogniser is switched, Urdu words are compared correctly, a
+  spelling near miss counts only if the practised sound is still there, and a new *Word check accent*
+  setting (US, UK, South Asia).
+- Removed: the "Correct" button in *Game listens*, and the phrases and sentences (they were not in the
+  word list).
+
+### Fixed in the final check
+- A sound or language chosen on Word Garden's card was forgotten after reloading the page.
+- The microphone switch could trigger wrongly after a word (it read a fresh, silent listen).
+- Sky Glide asked for the hum again on every level when the hum check learnt nothing.
+- Fish Feast: a puff check that learnt nothing made puffs impossible for the visit; Skip now skips the check.
+- Word art was washed out (most of all in Urdu); the card's sound picker is labelled "Sound".
+- The session report names Fish Feast's tongue-out move "Tongue down", as the game does.
+
 ## 6.0.1 (2026-11-11)
 
 Fixes from the first test on the live site.

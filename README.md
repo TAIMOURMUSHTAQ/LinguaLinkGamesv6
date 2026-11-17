@@ -5,16 +5,16 @@ They run in any modern browser on a laptop, tablet or phone, and can be installe
 The camera and microphone are processed **on the device only**: no video or audio is uploaded, unless a
 grown-up turns on the online word check for Word Garden.
 
-**Version 6.0.1.** See [CHANGELOG.md](CHANGELOG.md) for what changed.
+**Version 6.2.0.** See [CHANGELOG.md](CHANGELOG.md) for what changed.
 
 | Game | Therapy focus | Controlled by | Touch fallback |
 |---|---|---|---|
-| **Balloon Breeze** | Breath support, sustained voice, clear vowels | Microphone: only the sound asked for ("aaa", "eee", "iii", "ooo", "uuu") blows up the balloon | Hold the big button |
-| **Sky Glide** | The five vowels on cue, quiet and loud voice | Microphone: each vowel flies the bird to its own height (U lowest, then O, A, E, I). Two ways to play: Keep flying, or Stop and say | Drag up and down, or arrow keys |
+| **Balloon Breeze** | Breath support, sustained voice, clear vowels at phoneme level | Microphone: only the vowel asked for (A "aaa", E "ehh", O "ooo"), judged strictly, blows up the balloon | Hold the big button |
+| **Sky Glide** | Vowels and other sounds on cue | Microphone: each sound flies to its own height (hum mmm lowest, then O, A, E, hiss sss). Two ways to play: Keep flying, or Stop and say | Drag up and down, or arrow keys |
 | **Voice Painter** | Pitch control: rising, falling and steady pitch | Microphone pitch: a higher voice paints higher, the same note paints straight. Two ways to play: Brush waits, or Brush keeps going | Drag up and down, or arrow keys |
 | **Fish Feast** | Oral-motor and facial movement: jaw, lips, cheeks, tongue, head, eyebrows, expressions; endurance | Camera face tracking (MediaPipe); the tongue from the colour around the mouth. 24 moves; Mixed, Mouth and tongue, or Big face moves | Therapist taps "Done" or "Not yet" (also for tongue moves in camera mode) |
 | **Firefly Night** | Reaching, crossing midline, hand use, sequencing | Camera hand tracking (MediaPipe) | Touch or click |
-| **Word Garden** | Articulation of /s/, /k/, /p/, /t/, /m/, /b/, /f/ in words, phrases and sentences | Two ways to play. Game listens: speech recognition checks each word (online only if a grown-up allows it). Grown-up checks: an adult marks each word | Adult taps "Said it" |
+| **Word Garden** | Articulation of the sounds in the LinguaLink360 word list (24 English sounds, 38 Urdu letters), at the start, middle and end of words | Choose English or Urdu and a sound (or the game's mix) on the level card. Game listens: speech recognition checks each word. Grown-up checks: an adult marks each word | Adult taps "Said it" |
 | **Air Letters** | Arm control, motor planning, letter shapes and sounds | Camera: move an open hand along the letter. It pops up "B for Ball" and says it | Drag a finger |
 | **Finger Numbers** | Finger isolation, fine motor control, numbers and counting | Camera: a different finger each level; if that finger is not seen for 2 s, any finger or the whole hand draws. Last level holds up 1 to 10 fingers | Drag a finger; adult confirms counting |
 | **Balance Tray** | Two-handed coordination, load balancing, steadiness | Camera: two hands hold a tray while fruit lands on it | Drag each side, or arrow keys |

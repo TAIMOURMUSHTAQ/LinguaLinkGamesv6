@@ -88,6 +88,42 @@ test("Vowels: the wrong sound does not fill the balloon", () => {
   }
 });
 
+test("Strict vowels (v6.2): A, E and O are recognised, and never taken for each other or for I and U", () => {
+  const PRACTISED = ["aah", "ehh", "ooo"];
+  for (const who of Object.keys(VOICES)) {
+    for (const v of PRACTISED) {
+      const h = hear(who, v);
+      for (const len of [1, 0.25]) assert.ok(V.clearVowel(h.d, v, len), `${who} ${v} counts at lenience ${len}: F1 ${Math.round(h.f1)} F2 ${Math.round(h.f2)} ${JSON.stringify(Object.fromEntries(Object.entries(h.d).map(([k, x]) => [k, Math.round(x * 100) / 100])))}`);
+    }
+    // every sound against every practised target other than itself, on the most forgiving setting
+    for (const spoken of V.VOWELS) {
+      const h = hear(who, spoken);
+      for (const target of PRACTISED) if (target !== spoken) assert.ok(!V.clearVowel(h.d, target, 1), `${who} saying ${spoken} must never count as ${target}`);
+    }
+  }
+  // a sound half way between A and E counts as neither
+  const mid = V.vowelDistances(Math.sqrt(1030 * 690), Math.sqrt(1370 * 2400), 2);
+  assert.ok(!(V.clearVowel(mid, "aah", 1) && V.clearVowel(mid, "ehh", 1)), "never both");
+});
+
+test("Hum (v6.2): a hum keeps its energy low, vowels do not; the limit is learnt between them", () => {
+  // a hum: the lips closed, so the higher resonances are damped hard (the nose is a low-pass filter)
+  const lowpass = (x, hz, times) => { let y = x; for (let k = 0; k < times; k++) { const a = Math.exp((-2 * Math.PI * hz) / SR); let p = 0; y = y.map((v) => (p = (1 - a) * v + a * p)); } return y; };
+  const ratioOf = (wave) => { const r = []; for (let s = 4000; s + N < wave.length; s += 3000) { const q = V.humRatio(powerOf(wave.subarray(s, s + N)), SR / N); if (q != null) r.push(q); } return r.sort((a, b) => a - b)[r.length >> 1]; };
+  for (const who of Object.keys(VOICES)) {
+    const r = VOICES[who];
+    const hum = ratioOf(lowpass(synth(r.f0, [260, 1000, 2200, 3300]), 450, 3));
+    assert.ok(hum < V.HUM_RATIO, `${who} hum ratio ${hum}`);
+    for (const v of ["aah", "ehh", "ooo"]) {
+      const q = ratioOf(synth(r.f0, r.f[v]));
+      assert.ok(q > V.HUM_RATIO, `${who} ${v} is not a hum (ratio ${q})`);
+    }
+  }
+  const limit = V.learnHumLimit(Array(8).fill(0.03), [0.5, 0.6, 0.4, 0.8, 0.45, 0.7]);
+  assert.ok(limit > 0.03 && limit < 0.4, `learnt limit ${limit}`);
+  assert.equal(V.learnHumLimit(Array(8).fill(0.3), Array(8).fill(0.35)), null, "a hum like the vowels: nothing learnt");
+});
+
 test("Vowels: the bird goes up for eee and down for aaa, loud or whispered", () => {
   for (const who of Object.keys(VOICES)) for (const whisper of [false, true]) {
     const e = hear(who, "eee", { whisper }), a = hear(who, "aah", { whisper });
@@ -121,9 +157,9 @@ test("Quiet voices still give a pitch, and octave slips are folded back", () => 
   assert.equal(fixOctave(260, 200), 260);
 });
 
-test("Balloon Breeze: all five sounds, longer holds and a stricter match, level by level", () => {
+test("Balloon Breeze: A, E and O, longer holds and a stricter match, level by level", () => {
   const L = breeze.levels;
-  assert.deepEqual(new Set(L.flatMap((l) => l.sounds)), new Set(V.VOWELS));
+  assert.deepEqual(new Set(L.flatMap((l) => l.sounds)), new Set(["aah", "ehh", "ooo"]));
   for (let i = 1; i < L.length; i++) {
     assert.ok(L[i].target >= L[i - 1].target, "holds never get shorter");
     assert.ok(L[i].lenience < L[i - 1].lenience, "the match gets stricter");
@@ -142,7 +178,7 @@ function makeCtx(def, over = {}) {
     ...over,
   };
 }
-const mockMic = (over = {}) => ({ voiced: false, speech: false, periodic: false, get steadyVoice() { return this.periodic; }, hiss: false, selfSound: false, level01: 0, rise: 0, vowel: null, formants: null, _want: null, personal: null, isVowel(v) { return this._want === v; }, direction() { return this._dir || 0; }, setAnchors(a) { this.personal = a; }, ...over });
+const mockMic = (over = {}) => ({ voiced: false, speech: false, periodic: false, get steadyVoice() { return this.periodic; }, hiss: false, selfSound: false, level01: 0, rise: 0, vowel: null, formants: null, _want: null, personal: null, isVowel(v) { return this._want === v; }, isClearVowel(v) { return this._want === v; }, isHum() { return this._want === "mmm"; }, direction() { return this._dir || 0; }, setAnchors(a) { this.personal = a; }, ...over });
 const { rememberVowels, forgetVowels, createVowelCheck, CHECK_ORDER } = await import("../js/kit/vowelcheck.js");
 
 test("Balloon Breeze: only the sound asked for moves the balloon", () => {
@@ -174,9 +210,10 @@ test("Balloon Breeze: only the sound asked for moves the balloon", () => {
   const p = g.progress; Object.assign(mic, { selfSound: true }); run(1); assert.equal(g.progress, p);
 });
 
-test("Sky Glide: each vowel flies to its own height, silence glides straight; Stop and say waits", () => {
+test("Sky Glide: each sound flies to its own height, silence glides straight; Stop and say waits", () => {
   glide.resetCalibration();
-  const say = (m, v) => Object.assign(m, { speech: !!v, vowel: v, _want: v });
+  // a hum, a hiss or a vowel; null is silence
+  const say = (m, v) => Object.assign(m, { speech: !!v, voiced: !!v, vowel: v, _want: v, hiss: v === "sss" });
   const mic = mockMic();
   const level = { ...glide.LEVELS[0] };
   const ctx = makeCtx(glide.default, { mode: "sensors", mic, variant: "fly", level });
@@ -187,12 +224,13 @@ test("Sky Glide: each vowel flies to its own height, silence glides straight; St
   run(0.5);
   const h0 = g.birdH;
   run(1); assert.ok(Math.abs(g.birdH - h0) < 0.001, "silence: straight");
-  say(mic, "eee"); run(2); assert.ok(Math.abs(g.birdH - V.VOWEL_HEIGHT.eee) < 0.05, `E flies to the top: ${g.birdH}`);
-  say(mic, "uuu"); run(2.5); assert.ok(Math.abs(g.birdH - V.VOWEL_HEIGHT.uuu) < 0.05, "U flies to the bottom (a quiet voice is enough)");
-  say(mic, "ehh"); run(2); assert.ok(Math.abs(g.birdH - V.VOWEL_HEIGHT.ehh) < 0.05, "I");
+  say(mic, "sss"); run(2); assert.ok(Math.abs(g.birdH - V.VOWEL_HEIGHT.sss) < 0.05, `a hiss flies to the top: ${g.birdH}`);
+  say(mic, "mmm"); run(2.5); assert.ok(Math.abs(g.birdH - V.VOWEL_HEIGHT.mmm) < 0.05, `a hum flies to the bottom: ${g.birdH}`);
+  say(mic, "ehh"); run(2); assert.ok(Math.abs(g.birdH - V.VOWEL_HEIGHT.ehh) < 0.05, "E");
+  say(mic, "eee"); const hI = g.birdH; run(1); assert.ok(Math.abs(g.birdH - hI) < 0.02, "I is not a Sky Glide sound: the bird glides on");
   say(mic, null); const h1 = g.birdH; run(1); assert.ok(Math.abs(g.birdH - h1) < 0.02, "silence holds the height");
-  const order = ["uuu", "ooo", "aah", "ehh", "eee"].map((v) => V.VOWEL_HEIGHT[v]);
-  for (let i = 1; i < order.length; i++) assert.ok(order[i] > order[i - 1], "U, O, A, I, E from bottom to top");
+  const order = ["mmm", "ooo", "aah", "ehh", "sss"].map((v) => V.VOWEL_HEIGHT[v]);
+  for (let i = 1; i < order.length; i++) assert.ok(order[i] > order[i - 1], "mmm, O, A, E, sss from bottom to top");
 
   const mic2 = mockMic();
   const s = glide.default.create(makeCtx(glide.default, { mode: "sensors", mic: mic2, variant: "stop", level }));
@@ -202,7 +240,7 @@ test("Sky Glide: each vowel flies to its own height, silence glides straight; St
   assert.ok(s.waiting, "the bird stops at the ring");
   const want = glide.ringVowels(level.order, level.count)[0];
   run2(3); assert.ok(s.waiting, "it keeps waiting without the sound");
-  say(mic2, want === "eee" ? "uuu" : "eee"); run2(3); assert.ok(s.waiting, "another sound does not move it on");
+  say(mic2, want === "sss" ? "aah" : "sss"); run2(3); assert.ok(s.waiting, "another sound does not move it on");
   say(mic2, want); run2(3); assert.ok(!s.waiting, "the right sound moves it on");
   say(mic2, null);
   assert.equal(s.responses.length, 1, "the response time is recorded");
@@ -227,7 +265,7 @@ test("Personal vowels: the child's own A, E, I, O, U are told apart", () => {
   assert.equal(V.makeVowelAnchors({ aah: samples.aah, eee: samples.eee.slice(0, 2) }), null, "too few samples");
 });
 
-test("Voice check: asks for A, E, I, O, U in turn and hands the child's vowels to the microphone", () => {
+test("Voice check: asks for A, E and O in turn and hands the child's vowels to the microphone", () => {
   forgetVowels();
   const mic = mockMic();
   let done = null;
@@ -240,7 +278,8 @@ test("Voice check: asks for A, E, I, O, U in turn and hands the child's vowels t
     for (let i = 0; i < 60 && CHECK_ORDER[k.i] === v && !k.done; i++) k.update(0.05);
   }
   assert.ok(k.done, "the check finishes");
-  assert.ok(done && done.aah && done.uuu, "all five vowels learnt");
+  assert.deepEqual(CHECK_ORDER, ["aah", "ehh", "ooo"]);
+  assert.ok(done && done.aah && done.ehh && done.ooo, "A, E and O learnt");
   assert.equal(mic.personal, done);
   const g = breeze.create(makeCtx(breeze, { mode: "sensors", mic: mockMic() }));
   assert.equal(g.phase, "play", "the next game reuses it");
@@ -267,17 +306,23 @@ test("Fish Feast: each level holds longer and asks for more, and every move grow
   assert.equal(mouthWidth([]), 0);
 });
 
-test("Word Garden: all sounds by default, and short words count but a hiss does not", () => {
+test("Word Garden: the game's mix by default, words only from the word list, short words count but a hiss does not", async () => {
+  const { WORDS_EN, SOUNDS_EN } = await import("../js/kit/wordlist.js");
   assert.equal(normalise({}).gardenSound, "all");
+  assert.equal(normalise({}).gardenLang, "en");
+  assert.equal(normalise({ gardenSound: "sh" }).gardenSound, "sh", "every sound of the list can be chosen");
+  assert.equal(normalise({ gardenLang: "ur", gardenSound: "sh" }).gardenSound, "all", "an English sound is not an Urdu letter");
   const list = garden.wordList("all", "initial");
-  assert.equal(new Set(list.map((it) => it.sound)).size, Object.keys(garden.WORD_BANK).length, "every sound is practised");
+  assert.ok(new Set(list.map((it) => it.sound)).size >= 6, "the mix practises many sounds");
+  for (let i = 1; i < list.length; i++) assert.notEqual(list[i].sound, list[i - 1].sound, "never the same sound twice in a row");
   assert.ok(list.every((it) => /\[[^\]]+\]/.test(it.word)));
   assert.ok(garden.wordList("k", "initial").every((it) => it.sound === "k"));
-  for (const s of GARDEN_SOUNDS) if (s !== "all") assert.ok(garden.WORD_BANK[s], `${s} has words`);
+  assert.equal(GARDEN_SOUNDS.length, SOUNDS_EN.length + 1);
+  // words only from the articulation list
+  const all = new Set(Object.values(WORDS_EN).flatMap((p) => Object.values(p).flat()));
+  for (let lv = 0; lv < 5; lv++) for (const s of GARDEN_SOUNDS) for (const it of garden.wordList(s, null, null, lv)) assert.ok(all.has(it.plain), `${it.plain} is in the list`);
   // every marked word gives the recogniser something to look for
-  for (const sound of Object.keys(garden.WORD_BANK)) for (const items of Object.values(garden.WORD_BANK[sound])) for (const it of items) {
-    assert.ok(garden.focusWords(it.word, sound).length >= 1, it.word);
-  }
+  for (const it of garden.wordList("all", null, null, 4)) assert.ok(garden.focusWords(it.word, it.sound).length >= 1, it.word);
 
   const makeGame = () => {
     const mic = mockMic();
@@ -296,7 +341,9 @@ test("Word Garden: two ways to play, right and wrong words, and a check that is 
   class FakeSR {
     start(track) { FakeSR.last = this; FakeSR.started++; FakeSR.track = track; }
     abort() { this.onend && this.onend(); }
-    say(...alts) { this.onresult({ results: [alts.map((transcript) => ({ transcript }))] }); this.onend && this.onend(); }
+    say(...alts) { const res = alts.map((transcript) => ({ transcript })); res.isFinal = true; this.onresult({ resultIndex: 0, results: [res] }); this.onend && this.onend(); }
+    early(...alts) { const res = alts.map((transcript) => ({ transcript })); res.isFinal = false; this.onresult({ resultIndex: 0, results: [res] }); }
+    stop() { this.onend && this.onend(); }
   }
   FakeSR.available = async () => FakeSR.status;
   const tick = () => new Promise((r) => setTimeout(r, 5));
@@ -312,7 +359,8 @@ test("Word Garden: two ways to play, right and wrong words, and a check that is 
     const run = (sec) => { for (let i = 0; i < sec * 20; i++) g.update(0.05); };
     return { g, ctx, mic, copy, run, ids: () => controls.map((c) => c.id), tap: (id) => controls.find((c) => c.id === id).onTap(),
       say: async (...alts) => { run(0.4); FakeSR.last.say(...alts); await tick(); },
-      speak: (sec) => { Object.assign(mic, { voiced: true, periodic: true }); run(sec); Object.assign(mic, { voiced: false, periodic: false }); } };
+      speak: (sec) => { Object.assign(mic, { voiced: true, periodic: true }); run(sec); Object.assign(mic, { voiced: false, periodic: false }); },
+      word: () => g.items[g.i].plain };
   };
   globalThis.window = { SpeechRecognition: FakeSR };
   try {
@@ -320,7 +368,7 @@ test("Word Garden: two ways to play, right and wrong words, and a check that is 
     {
       const t = await build();
       assert.equal(t.g.checkBy, "auto"); assert.equal(t.g.checker, "local");
-      await t.say("sun");
+      await t.say(t.word());
       assert.equal(FakeSR.track, t.copy, "the recogniser hears the game's microphone");
       assert.equal(t.g.state, "bloom"); assert.equal(t.g.grown.length, 1); assert.deepEqual(t.ids(), []);
       assert.deepEqual([t.g.results[0].result, t.g.results[0].judged_by, t.g.results[0].attempts], ["clear", "auto", 1]);
@@ -331,16 +379,16 @@ test("Word Garden: two ways to play, right and wrong words, and a check that is 
     // wrong word: no flower, asked to try again or go on; left alone it listens again
     {
       const t = await build();
-      await t.say("fun");
-      assert.equal(t.g.state, "retry"); assert.equal(t.g.lastHeard, "fun"); assert.equal(t.g.grown.length, 0);
+      await t.say("xylophone");
+      assert.equal(t.g.state, "retry"); assert.equal(t.g.lastHeard, "xylophone"); assert.equal(t.g.grown.length, 0);
       assert.ok(t.ids().includes("again") && t.ids().includes("next") && t.ids().includes("hear"));
       t.tap("again"); assert.equal(t.g.state, "listen");
-      await t.say("run"); t.run(3.1); assert.equal(t.g.state, "listen", "listens again by itself");
-      await t.say("bun");
+      await t.say("banana split"); t.run(3.1); assert.equal(t.g.state, "listen", "listens again by itself");
+      await t.say("umbrella");
       assert.equal(t.g.i, 1, "3 tries, then the next word");
       assert.deepEqual([t.g.results[0].result, t.g.results[0].judged_by, t.g.results[0].attempts], ["needs_practice", "auto", 3]);
       assert.ok(t.g.noteT > 0, "and says so");
-      await t.say("fog");
+      await t.say("xylophone");
       t.tap("next");
       assert.equal(t.g.i, 2);
       assert.deepEqual([t.g.results[1].result, t.g.results[1].attempts], ["needs_practice", 1]);
@@ -387,21 +435,42 @@ test("Word Garden: two ways to play, right and wrong words, and a check that is 
       assert.equal(v.g.checkBy, "voice");
       v.g.destroy();
     }
-    // A recogniser that returns nothing must not mark the child down
+    // A recogniser that returns nothing must not mark the child down. If no sound reached it, the
+    // game first switches microphone (once); if still nothing, a grown-up is asked.
     {
       const t = await build();
-      t.run(0.4); t.speak(0.5); t.run(3.2);
+      t.run(0.4); t.speak(0.5); t.run(6.2);
       assert.deepEqual([t.g.state, t.g.attempts], ["retry", 0], "not counted against the child");
-      t.run(3.1); t.speak(0.5); t.run(3.2);
-      assert.equal(t.g.state, "setup", "twice: a grown-up is asked"); assert.equal(t.g.setup.failed, true);
+      t.run(3.1); t.speak(0.5); t.run(6.2);
+      assert.equal(t.g.state, "retry", "twice with no sound: the microphone is switched");
+      assert.equal(t.g.useTrack, false, "now the browser's default microphone");
+      t.run(3.1); t.speak(0.5); t.run(6.2);
+      t.run(3.1); t.speak(0.5); t.run(6.2);
+      assert.equal(t.g.state, "setup", "still nothing: a grown-up is asked"); assert.equal(t.g.setup.failed, true);
       t.g.destroy();
     }
     // Once it has returned words, silence from it counts as a try
     {
       const t = await build();
-      await t.say("sun"); t.run(1.5);
-      t.run(0.4); t.speak(0.5); t.run(3.2);
+      await t.say(t.word()); t.run(1.5);
+      t.run(0.4); t.speak(0.5); t.run(6.2);
       assert.deepEqual([t.g.state, t.g.attempts], ["retry", 1]);
+      t.g.destroy();
+    }
+    // An early (interim) result that matches counts at once; one that does not match waits
+    {
+      const t = await build();
+      t.run(0.4); FakeSR.last.early("um"); await tick();
+      assert.equal(t.g.state, "listen", "an early result that does not match is not a try");
+      FakeSR.last.early(t.word()); await tick();
+      assert.equal(t.g.state, "bloom", "the right word blooms while the child is still speaking");
+      t.g.destroy();
+    }
+    // Urdu: Urdu words, the Urdu recogniser
+    {
+      const t = await build({ config: { gardenLang: "ur", gardenSound: "all" } });
+      assert.ok(/[\u0600-\u06FF]/.test(t.word()), `an Urdu word: ${t.word()}`);
+      assert.equal(FakeSR.last ? FakeSR.last.lang : "ur-PK", "ur-PK");
       t.g.destroy();
     }
     // A recogniser that hangs is replaced, then given up on

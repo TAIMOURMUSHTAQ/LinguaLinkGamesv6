@@ -1,10 +1,12 @@
 // BALLOON BREEZE: hold a vowel to blow up the balloon. The child holds the sound shown (A "aaa",
-// E "ehh", I "eee", O "ooo", U "uuu") and the balloon blows up step by step. Only the sound asked for
-// counts: other sounds, noise, claps, hissing or whispering do nothing, and the game says which sound
-// it wants. Every level uses all five vowels. Holds are 5, 10, 15, 20 and 25 seconds, level by level;
+// E "ehh", O "ooo") and the balloon blows up step by step. Only the sound asked for counts, judged
+// strictly (vowel.js clearVowel): A never fills the E balloon, E never the A one, and O never A or E;
+// "eee", "uuu", other sounds, noise, claps, hissing or whispering do nothing, and the game says which
+// sound it heard. The sound must last a moment before the balloon fills, so a passing sound never
+// counts. Every level uses A, E and O. Holds are 5, 10, 15, 20 and 25 seconds, level by level;
 // the child may take a breath, and the balloon waits. Later levels ask for a closer match.
 // Sensor mode: microphone with vowel recognition (after a short voice check that learns the child's
-// own five vowels). Touch mode: press and hold the big button (or the space bar), where the adult
+// own A, E and O). Touch mode: press and hold the big button (or the space bar), where the adult
 // judges the sound.
 import { W, H, sky, hills, ring, label, lumi, clamp, lerp, rr, vignette, star, glow } from "../kit/draw.js";
 import { sun, rainbow, cloudLayer, farBalloon, flock, swayTree, flowerRow, windStreaks, motes, SparkTrail } from "../kit/scene.js";
@@ -14,11 +16,11 @@ import { createVowelCheck, savedVowels, VOWEL_LETTER } from "../kit/vowelcheck.j
 // lenience: 1 accepts close neighbours (ooo for uuu), 0 needs a clear match. It tightens level by level.
 // target: seconds of the sound for each balloon: 5, 10, 15, 20, 25.
 export const LEVELS = [
-  { name: "First Puffs", goal: "Say A, E, I, O and U. Each sound for 5 seconds to blow up the balloon.", target: 5, rounds: 5, continuous: false, steadyTol: null, lenience: 1, sounds: ["aah", "ehh", "eee", "ooo", "uuu"], settings: { target_sec: 5, rounds: 5, lenience: 1 } },
-  { name: "Bigger Balloons", goal: "All five sounds, 10 seconds each. Take a breath when you need to.", target: 10, rounds: 5, continuous: false, steadyTol: null, lenience: 0.8, sounds: ["ooo", "aah", "uuu", "eee", "ehh"], settings: { target_sec: 10, rounds: 5, lenience: 0.8 } },
-  { name: "High in the Sky", goal: "All five sounds, 15 seconds each. Keep the sound clear.", target: 15, rounds: 5, continuous: false, steadyTol: null, lenience: 0.6, sounds: ["eee", "uuu", "aah", "ehh", "ooo"], settings: { target_sec: 15, rounds: 5, lenience: 0.6 } },
-  { name: "Gentle Voice", goal: "All five sounds, 20 seconds each, with a steady voice.", target: 20, rounds: 5, continuous: false, steadyTol: 8, lenience: 0.4, sounds: ["ehh", "ooo", "eee", "aah", "uuu"], settings: { target_sec: 20, rounds: 5, steady_tolerance_db: 8, lenience: 0.4 } },
-  { name: "Over the Mountains", goal: "All five sounds, 25 seconds each, smooth, steady and clear.", target: 25, rounds: 5, continuous: false, steadyTol: 6, lenience: 0.25, sounds: ["uuu", "ehh", "ooo", "eee", "aah"], settings: { target_sec: 25, rounds: 5, steady_tolerance_db: 6, lenience: 0.25 } },
+  { name: "First Puffs", goal: "Say A, E and O. Each sound for 5 seconds to blow up the balloon.", target: 5, rounds: 3, continuous: false, steadyTol: null, lenience: 1, sounds: ["aah", "ehh", "ooo"], settings: { target_sec: 5, rounds: 3, lenience: 1 } },
+  { name: "Bigger Balloons", goal: "A, E and O, 10 seconds each, twice. Take a breath when you need to.", target: 10, rounds: 6, continuous: false, steadyTol: null, lenience: 0.8, sounds: ["ooo", "aah", "ehh"], settings: { target_sec: 10, rounds: 6, lenience: 0.8 } },
+  { name: "High in the Sky", goal: "A, E and O, 15 seconds each, twice. Keep the sound clear.", target: 15, rounds: 6, continuous: false, steadyTol: null, lenience: 0.6, sounds: ["ehh", "ooo", "aah"], settings: { target_sec: 15, rounds: 6, lenience: 0.6 } },
+  { name: "Gentle Voice", goal: "A, E and O, 20 seconds each, twice, with a steady voice.", target: 20, rounds: 6, continuous: false, steadyTol: 8, lenience: 0.4, sounds: ["aah", "ooo", "ehh"], settings: { target_sec: 20, rounds: 6, steady_tolerance_db: 8, lenience: 0.4 } },
+  { name: "Over the Mountains", goal: "A, E and O, 25 seconds each, twice: smooth, steady and clear.", target: 25, rounds: 6, continuous: false, steadyTol: 6, lenience: 0.25, sounds: ["ooo", "ehh", "aah"], settings: { target_sec: 25, rounds: 6, steady_tolerance_db: 6, lenience: 0.25 } },
 ];
 
 // The sound for each round, cycling through the level's list.
@@ -34,8 +36,9 @@ export function scoreBreeze({ roundsDone, rounds, steadyPct = null }) {
 }
 
 const READY_SEC = 1.4; // pause before each round starts listening
+const MATCH_SEC = 0.2; // the right sound must last this long before the balloon fills
 
-const BALLOON = { aah: "#ff7aa2", ooo: "#7ab8ff", eee: "#ffc94a", ehh: "#9be38f", uuu: "#c49bff" };
+const BALLOON = { aah: "#ff7aa2", ooo: "#7ab8ff", ehh: "#9be38f", eee: "#ffc94a", uuu: "#c49bff" };
 const STEPS = 4; // the balloon grows in visible steps, each marked on the ring
 
 
@@ -99,14 +102,14 @@ const def = {
   version: "6.0.0",
   title: "Balloon Breeze",
   color: "#ef476f",
-  focus: "Blow up the balloon with your voice: A, E, I, O, U",
+  focus: "Blow up the balloon with your voice: A, E, O",
   input: "mic",
   mic: { vowels: true, onDb: 9, offDb: 5, softDb: 7 },
   inputLabel: "Microphone (only the sound asked for counts)",
   touchLabel: "Hold the big button while the child holds the sound",
   skills: ["Long sounds", "Clear sounds", "Steady voice"],
   howTo: [
-    ["🎤", "First say each sound when asked: A, E, I, O, U. The game learns your voice."],
+    ["🎤", "First say each sound when asked: A, E, O. The game learns your voice."],
     ["🔤", "Look at the letter in the bubble and say that sound."],
     ["🎈", "Keep the sound going. The balloon grows until it is full."],
     ["😮‍💨", "Take a breath when you need to. The balloon waits for you."],
@@ -147,6 +150,7 @@ const def = {
       soundsUsed: [],
       lenience: L.lenience,
       wrongT: 0,           // how long another sound has been going on
+      matchT: 0, missT: 0, // how long the sound asked for has lasted, and a short gap allowed in it
       heardAs: null,       // the vowel it sounded like, shown as a hint
       targetFrames: 0,     // voice frames that matched the sound asked for
       speechFrames: 0,     // all voice frames
@@ -217,10 +221,14 @@ const def = {
         // Progress needs a real voice (clear pitch, not noise, a clap, a hiss or a whisper) making
         // the sound asked for.
         const mic = ctx.mic;
-        const heard = (mic.voiced || mic.speech) && mic.steadyVoice && !mic.hiss;
+        // a real voice, not a hiss and not a hum ("mmm" is not "ooo")
+        const heard = (mic.voiced || mic.speech) && mic.steadyVoice && !mic.hiss && !(mic.isHum && mic.isHum());
         if (heard) g.speechFrames++;
-        voicing = heard && mic.isVowel(g.sound, g.lenience);
-        if (voicing) { g.targetFrames++; g.wrongT = 0; g.heardAs = null; }
+        // the strict test, and the sound must last a moment (MATCH_SEC) before the balloon fills
+        const match = heard && mic.isClearVowel(g.sound, g.lenience);
+        if (match) { g.matchT += dt; g.missT = 0; } else { g.missT += dt; if (g.missT > 0.15) g.matchT = 0; }
+        voicing = match && g.matchT >= MATCH_SEC;
+        if (match) { g.targetFrames++; g.wrongT = 0; g.heardAs = null; }
         else if (mic.voiced || mic.speech) { g.wrongT += dt; if (mic.vowel && mic.vowel !== g.sound) g.heardAs = mic.vowel; }
         else { g.wrongT = Math.max(0, g.wrongT - dt * 2); if (g.wrongT === 0) g.heardAs = null; }
         if (voicing) {
@@ -280,7 +288,7 @@ const def = {
       drawScene(c, tm, g.lift, ctx.levelIndex);
       const sinking = g.failed && g.celebrate > 0;
       const by = 420 - g.progress * 170 - (g.celebrate > 0 && !g.failed ? (g.celebrateLen - g.celebrate) * 30 : 0);
-      const voicing = ctx.mode === "sensors" ? ctx.mic && ctx.mic.isVowel(g.sound, g.lenience) && (ctx.mic.voiced || ctx.mic.speech) : g.touchDown;
+      const voicing = ctx.mode === "sensors" ? ctx.mic && ctx.mic.isClearVowel(g.sound, g.lenience) && (ctx.mic.voiced || ctx.mic.speech) : g.touchDown;
       drawBalloon(c, W / 2, by, ctx.time, voicing, BALLOON[g.sound] || BALLOON.aah, sinking, g.progress);
       // sparkles rise from the balloon while the right sound is held; each step gets a little party
       const dtDraw = Math.max(0, ctx.time - (g.lastDraw || 0)); g.lastDraw = ctx.time;
@@ -360,7 +368,7 @@ const def = {
         summary: [
           { label: ctx.t("balloons"), value: `${g.roundsDone}/${L.rounds}` },
           { label: ctx.t("longestHold"), value: `${Math.floor(longest)} s` },
-          { label: ctx.t("soundsDone"), value: ["aah", "ehh", "eee", "ooo", "uuu"].filter((v) => g.bySound[v] && g.bySound[v].done).map((v) => VOWEL_LETTER[v]).join(" ") || "–" },
+          { label: ctx.t("soundsDone"), value: ["aah", "ehh", "ooo"].filter((v) => g.bySound[v] && g.bySound[v].done).map((v) => VOWEL_LETTER[v]).join(" ") || "–" },
         ],
       };
     };

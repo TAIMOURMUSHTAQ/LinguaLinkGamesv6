@@ -7,6 +7,10 @@
 // - Without either, the game falls back to noticing that the child spoke (see garden.js).
 // The check tells whether the word was recognisable, not whether the target sound was perfect,
 // so every item records how it was judged and an adult can always override.
+// v6.2 (see docs/detection-hurdles.md): early (interim) results are used, so a word can count while
+// the child is still saying it; a listen ends gracefully (finish) instead of being cut off, so a slow
+// online result is not thrown away; and the listener records whether any sound reached it, so the
+// game can notice a microphone hand-over that delivers silence and switch to the default microphone.
 
 const SR = () => (typeof window !== "undefined" ? window.SpeechRecognition || window.webkitSpeechRecognition : null) || null;
 const STUCK_MS = 15000;  // a recogniser that has not finished by now has hung (seen in Chrome): replace it
@@ -26,7 +30,8 @@ export function wordsOf(text) {
   return String(text || "")
     .toLowerCase()
     .replace(/[’']s\b/g, "")
-    .replace(/[^a-z\s]/g, " ")
+    .replace(/[\u064B-\u065F\u0670\u200c\u200d\u0640]/g, "")   // Urdu: short-vowel marks and joiners
+    .replace(/[^\p{L}\s]/gu, " ")
     .split(/\s+/)
     .filter(Boolean)
     .map((w) => SAME_SOUND[w] || w);
@@ -40,7 +45,8 @@ function sameWord(heard, target) {
 
 // Check one recogniser transcript against the target. `focus` lists the target words that carry
 // the practice sound: all of them must be heard. Of the other words, most must be heard too.
-export function judgeTranscript(transcript, target, focus = []) {
+// near(heardWord, targetWord): an extra test for a near miss (wordgarden.js nearMiss), or null.
+export function judgeTranscript(transcript, target, focus = [], near = null) {
   const want = wordsOf(target);
   const heard = wordsOf(transcript);
   if (!want.length) return { ok: false, matched: 0, total: 0 };
@@ -48,7 +54,7 @@ export function judgeTranscript(transcript, target, focus = []) {
   let matched = 0;
   const missing = [];
   for (const w of want) {
-    const i = pool.findIndex((h) => sameWord(h, w));
+    const i = pool.findIndex((h) => sameWord(h, w) || (near ? near(h, w) : false));
     if (i >= 0) { matched++; pool.splice(i, 1); } else missing.push(w);
   }
   const focusWords = focus.flatMap(wordsOf);
@@ -60,10 +66,10 @@ export function judgeTranscript(transcript, target, focus = []) {
 }
 
 // Best result over the recogniser's alternatives.
-export function judgeAlternatives(alternatives, target, focus = []) {
+export function judgeAlternatives(alternatives, target, focus = [], near = null) {
   let best = { ok: false, matched: 0, total: wordsOf(target).length, heard: alternatives[0] || "" };
   for (const alt of alternatives) {
-    const r = judgeTranscript(alt, target, focus);
+    const r = judgeTranscript(alt, target, focus, near);
     if (r.ok || r.matched > best.matched) best = { ...r, heard: alt };
     if (r.ok) break;
   }
@@ -85,11 +91,16 @@ export async function localStatus(lang = "en-US") {
 // Listens for one utterance at a time. The game calls start() whenever it is ready to listen and
 // stop() while the game itself is speaking, so the model word is never taken as the child's.
 export class WordListener {
-  constructor({ lang = "en-US", local = false, onHeard = () => {}, track = null } = {}) {
+  // onHeard(alternatives, final): called for early (interim) and final results.
+  // useTrack: give the recogniser the game's microphone (false: the browser's default microphone).
+  constructor({ lang = "en-US", local = false, onHeard = () => {}, track = null, useTrack = true } = {}) {
     this.lang = lang;
     this.local = local;
     this.onHeard = onHeard;
     this.track = track;    // the game's microphone; without it the browser picks its default device
+    this.useTrack = useTrack;
+    this.heardSound = false; // this listen: did any sound reach the recogniser (soundstart)?
+    this.finishing = false;
     this.copy = null;
     this.rec = null;
     this.running = false;
@@ -114,17 +125,22 @@ export class WordListener {
       r = new R();
       r.lang = this.lang;
       r.continuous = false;
-      r.interimResults = false;
+      r.interimResults = true;
       r.maxAlternatives = 5;
       if (this.local) r.processLocally = true;
     } catch { this.broken = true; return; }
+    this.heardSound = false; this.finishing = false;
+    r.onsoundstart = () => { this.heardSound = true; };
+    r.onspeechstart = () => { this.heardSound = true; };
     r.onresult = (e) => {
       this.failures = 0;
       this.stalls = 0;
-      const res = e.results && e.results[0];
-      if (!res) return;
-      const alts = Array.from(res, (a) => a.transcript).filter(Boolean);
-      if (alts.length) this.onHeard(alts);
+      this.heardSound = true;
+      for (let i = e.resultIndex || 0; i < (e.results ? e.results.length : 0); i++) {
+        const res = e.results[i];
+        const alts = Array.from(res, (a) => a.transcript).filter(Boolean);
+        if (alts.length) this.onHeard(alts, !!res.isFinal);
+      }
     };
     r.onerror = (e) => {
       const err = e && e.error;
@@ -138,7 +154,7 @@ export class WordListener {
   // The recogniser listens to the game's own microphone. Browsers that cannot take a track throw
   // here and use their default device instead.
   _begin(r) {
-    if (this.track) {
+    if (this.track && this.useTrack) {
       try { this.copy = this.track.clone(); r.start(this.copy); return; } catch { this._dropCopy(); }
     }
     r.start();
@@ -147,6 +163,15 @@ export class WordListener {
   _dropCopy() {
     try { this.copy && this.copy.stop(); } catch {}
     this.copy = null;
+  }
+
+  // End this listen gracefully: the recogniser still delivers what it heard (a slow online result is
+  // not lost). Use stop() to drop it instead.
+  finish() {
+    const r = this.rec;
+    if (!r || this.finishing) return;
+    this.finishing = true;
+    try { r.stop(); } catch { this.stop(); }
   }
 
   stop() {

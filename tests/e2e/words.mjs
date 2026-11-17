@@ -36,7 +36,7 @@ const standIn = (status) => `(() => {
   F.started = 0; F.withTrack = 0; F.status = ${JSON.stringify(status)};
   F.available = async () => F.status;
   window.SpeechRecognition = F; window.webkitSpeechRecognition = F; window.__F = F;
-  window.__say = (...alts) => { const r = window.__rec; if (!r) return false; r.onresult({ results: [alts.map((transcript) => ({ transcript }))] }); r.onend && r.onend(); return true; };
+  window.__say = (...alts) => { const r = window.__rec; if (!r) return false; r.onresult({ results: [alts.map((transcript) => ({ transcript }))] }); r.onend && r.onend(); if (window.__rec === r) window.__rec = null; return true; };
 })()`;
 
 const GAME = "window.LinguaLinkPlay.runner().game";

@@ -22,17 +22,19 @@ function makeCtx(def, over = {}) {
   };
 }
 
-test("Hold games go 5, 10, 15, 20, 25 seconds, and Balloon Breeze uses all five vowels on every level", () => {
+test("Hold games go 5, 10, 15, 20, 25 seconds, and Balloon Breeze uses A, E and O on every level", () => {
   assert.deepEqual(breeze.levels.map((l) => l.target), [5, 10, 15, 20, 25]);
   assert.deepEqual(mouth.LEVELS.map((l) => l.hold), [5, 10, 15, 20, 25]);
-  for (const l of breeze.levels) assert.deepEqual([...l.sounds].sort(), [...VOWELS].sort(), l.name);
+  for (const l of breeze.levels) assert.deepEqual([...l.sounds].sort(), ["aah", "ehh", "ooo"], l.name);
   for (const l of mouth.LEVELS) for (let r = 0; r < l.reps; r++) assert.equal(mouth.holdFor(l, r), l.hold, "every move in a level is held the same time");
 });
 
 test("Fish Feast: many moves, shuffled, never the same twice in a row, all of them played", () => {
   const playable = Object.keys(mouth.MOVES).filter((m) => !mouth.MOVES[m].hidden);
   assert.ok(playable.length >= 20, `${playable.length} moves`);
-  for (const m of ["tongueOut", "tongueLeft", "tongueRight", "tongueInOut", "tongueSides", "headLeft", "headRight", "nodYes", "shakeNo", "sad", "surprised", "cross", "puff", "wide"]) assert.ok(mouth.MOVES[m], m);
+  for (const m of ["tongueOut", "tongueLeft", "tongueRight", "tongueInOut", "tongueSides", "headLeft", "headRight", "nodYes", "shakeNo", "tongueUp", "browsUp", "eyesShut", "puff", "wide", "smile", "kiss", "open"]) assert.ok(mouth.MOVES[m], m);
+  for (const m of ["surprised", "sad", "cross"]) assert.ok(!mouth.MOVES[m], `${m} is gone (v6.2)`);
+  assert.equal(mouth.MOVES.tongueOut.key, "tongueDown", "tongue out is shown as tongue down");
   const used = new Set();
   for (const v of ["mix", "small", "big"]) {
     mouth.LEVELS.forEach((lv, i) => {
@@ -61,9 +63,7 @@ test("Fish Feast: head turns, nods, eyebrows, moods and the tongue are measured 
   assert.ok(on("headLeft", { yaw: -0.12 }) && !on("headRight", { yaw: -0.12 }));
   assert.ok(on("headDown", { nod: 0.58 }));
   assert.ok(on("browsUp", { browUp: 0.6 }) && on("browsUp", { browH: 0.36 }));
-  assert.ok(on("surprised", { browUp: 0.6, jawOpen: 0.3 }) && !on("surprised", { browUp: 0.6 }), "surprised needs the mouth open too");
-  assert.ok(on("sad", { cornerDrop: 0.05 }) && !on("sad", { cornerDrop: 0.05, smile: 0.5 }));
-  assert.ok(on("cross", { browDown: 0.4 }));
+  assert.ok(on("tongueUp", { tongueUpR: 0.06, openR: 0.06 }) && !on("tongueUp", { tongueUpR: 0.06 }), "tongue up, with the lips apart");
   assert.ok(on("eyesShut", { blink: 0.8 }) && !on("eyesShut", { blink: 0.3 }));
   assert.ok(on("tongueOut", { tongueDown: 0.06, openR: 0.06 }), "tongue out");
   assert.ok(!on("tongueOut", { tongueDown: 0.06 }), "with the lips closed it is not a tongue");

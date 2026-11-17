@@ -7,7 +7,9 @@ const mem = new Map();
 globalThis.window = { localStorage: { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) } };
 
 const { detectPitch } = await import("../js/kit/mic.js");
-const { scoreGarden, splitFocus, wordList, WORD_BANK, plainWord } = await import("../js/games/garden.js");
+const { scoreGarden, splitFocus, wordList, plainWord } = await import("../js/games/garden.js");
+const { WORDS_EN } = await import("../js/kit/wordlist.js");
+const { markWord } = await import("../js/kit/wordgarden.js");
 const { LEVELS: BREEZE, soundForRound } = await import("../js/games/breeze.js");
 const { recordResult, isUnlocked, getProgress, clearProgress, currentLevel, totalStars } = await import("../js/kit/progress.js");
 const { describe, perRound } = await import("../js/kit/report.js");
@@ -46,9 +48,11 @@ test("M3: target letters are marked exactly, no /sh/ or /z/", () => {
   assert.deepEqual(focus("The [s]un is hot."), ["s"], "the s in 'is' is a /z/");
   assert.deepEqual(focus("gla[ss]es"), ["ss"]);
   assert.deepEqual(focus("wash"), [], "fallback skips 'sh'");
-  for (const sound of Object.keys(WORD_BANK)) for (const list of Object.values(WORD_BANK[sound])) for (const it of list) {
-    assert.ok(/\[[^\]]+\]/.test(it.word), `${sound}: ${it.word} has a marked target`);
-    assert.ok(!/[[\]]/.test(plainWord(it.word)));
+  // every word of the articulation list gets its sound marked, in its position
+  for (const [sound, byPos] of Object.entries(WORDS_EN)) for (const [pos, list] of Object.entries(byPos)) for (const w of list) {
+    const m = markWord(w, sound, pos);
+    assert.ok(/\[[^\]]+\]/.test(m), `${sound} ${pos}: ${w} has a marked target`);
+    assert.equal(plainWord(m), w);
   }
 });
 
@@ -56,7 +60,8 @@ test("M4: custom words per level and per position", () => {
   const perLevel = [[{ word: "a" }], [{ word: "b" }], [{ word: "c" }], [{ word: "d" }], [{ word: "e" }]];
   assert.equal(wordList("s", "final", perLevel, 1)[0].word, "b");
   assert.equal(wordList("s", "medial", { medial: [{ word: "x" }] }, 2)[0].word, "x");
-  assert.equal(wordList("s", "initial", { medial: [{ word: "x" }] }, 0)[0].word, "[s]un", "missing group falls back to the word bank");
+  const fallback = wordList("s", "initial", { medial: [{ word: "x" }] }, 0)[0];
+  assert.ok(WORDS_EN.s.initial.includes(fallback.plain), "missing group falls back to the word list");
 });
 
 test("Balloon Breeze uses varied sounds round by round", () => {
@@ -65,7 +70,7 @@ test("Balloon Breeze uses varied sounds round by round", () => {
     assert.ok(new Set(used).size >= 2, `${lv.name} uses more than one sound`);
   }
   const all = new Set(BREEZE.flatMap((l) => l.sounds));
-  assert.ok(all.size >= 4);
+  assert.deepEqual([...all].sort(), ["aah", "ehh", "ooo"], "A, E and O only");
 });
 
 test("Progress: levels unlock in order and stickers are awarded once", () => {
@@ -118,7 +123,7 @@ test("Results carry a unique id for delivery confirmation", () => {
 });
 
 test("L7: unknown settings fall back to safe values", () => {
-  const c = normalise({ mode: "x", lang: "fr", gardenSound: "z", game: "nope", level: "19" });
+  const c = normalise({ mode: "x", lang: "fr", gardenSound: "zz", game: "nope", level: "19" });
   assert.deepEqual([c.mode, c.lang, c.gardenSound, c.game, c.level], ["auto", "en", "all", null, 10]);
 });
 
@@ -152,6 +157,15 @@ test("Word Garden automatic check: right words pass, wrong words and sound swaps
   assert.ok(!judgeTranscript("pink", "pink pig", ["pink", "pig"]).ok, "two words: both needed");
   assert.ok(judgeAlternatives(["fun", "sun"], "sun", ["sun"]).ok, "any alternative can match");
   assert.deepEqual(wordsOf("The cat's hat!"), ["the", "cat", "hat"]);
+  // Urdu words are kept (v6.2), without short-vowel marks
+  assert.deepEqual(wordsOf("کِتاب"), ["کتاب"]);
+  assert.ok(judgeTranscript("کتاب", "کتاب").ok);
+  // a near miss in spelling counts only if the practised sound is still there
+  const { nearMiss } = await import("../js/kit/wordgarden.js");
+  const near = (target) => (h, w) => nearMiss(h, target);
+  assert.ok(judgeTranscript("rabit", "rabbit", ["rabbit"], near("ra[bb]it")).ok);
+  assert.ok(!judgeTranscript("tun", "sun", ["sun"], near("[s]un")).ok, "a sound swap never counts");
+  assert.ok(!judgeTranscript("budder", "butter", ["butter"], near("bu[tt]er")).ok, "not in the middle either");
 });
 
 test("Word Garden moves on by itself: auto check, retries, and voice-only fallback", async () => {

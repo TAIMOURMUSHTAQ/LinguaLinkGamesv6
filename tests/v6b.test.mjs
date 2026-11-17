@@ -129,6 +129,47 @@ test("Tongue measure: a red area below the lower lip or beside a corner, compare
   assert.ok(right.tongueR > 0.05 && right.tongueL < 0.01, JSON.stringify(right));
 });
 
+test("Fish Feast puff check: the child's own puff is learnt, and then 60% of it counts", async () => {
+  const mouth = await import("../js/games/mouth.js");
+  mouth.forgetPuff();
+  const base = { jawOpen: 0.02, openR: 0.02, mouthW: 0.4, smile: 0.05, puff: 0.01, cheekW: 1.0, cheekW2: 1.2, cheekW3: 0.9, cheekZ: 0 };
+  // this face: the model's puff score hardly moves, the lower cheeks widen by 2%
+  const puffed = { ...base, puff: 0.02, cheekW2: 1.2 * 1.02 };
+  assert.ok(!mouth.moveActive("puff", puffed, base), "the textbook mix misses this small puff");
+  const frames = Array.from({ length: 30 }, (_, i) => {
+    const f = { ...puffed, cheekW2: 1.2 * (1 + 0.02 * (0.9 + (i % 5) * 0.05)) };
+    return Object.fromEntries(mouth.PUFF_SIGNALS.map(([n, k]) => [n, mouth.puffSignal(f, base, n, k)]));
+  });
+  const learnt = mouth.learnPuff(frames);
+  assert.ok(learnt && learnt.cheekW2 > 0.015 && !learnt.puff, JSON.stringify(learnt));
+  mouth.rememberPuff(learnt);
+  assert.ok(mouth.moveActive("puff", puffed, base), "after the check the same puff counts");
+  assert.ok(mouth.moveActive("puff", { ...base, cheekW2: 1.2 * 1.015 }, base), "two thirds of the child's puff counts");
+  assert.ok(!mouth.moveActive("puff", { ...base, cheekW2: 1.2 * 1.005 }, base), "a quarter of it does not");
+  assert.ok(!mouth.moveActive("puff", { ...puffed, openR: 0.3 }, base), "an open mouth holds no air");
+  assert.ok(!mouth.moveActive("puff", { ...puffed, smile: 0.5, mouthW: 0.46 }, base), "a smile is not a puff");
+  assert.equal(mouth.learnPuff(frames.map(() => ({ puff: 0, cheekW: 0, cheekW2: 0.001, cheekW3: 0, cheekZ: 0 }))), null, "nothing moved: nothing learnt");
+  mouth.forgetPuff();
+});
+
+test("Fish Feast: a puff move starts with the puff check in camera mode, once per visit", async () => {
+  const mouth = await import("../js/games/mouth.js");
+  mouth.forgetPuff();
+  const base = { jawOpen: 0.02, openR: 0.02, mouthW: 0.4, smile: 0.05, puff: 0.01, cheekW: 1.0, cheekW2: 1.2, cheekW3: 0.9, cheekZ: 0 };
+  const tracker = { face: { present: true, ...base } };
+  const ctx = makeCtx(mouth.default, { mode: "sensors", tracker, faceBase: base, level: { ...mouth.LEVELS[0], seq: ["puff", "open"], reps: 2 } });
+  const g = mouth.default.create(ctx);
+  g.start();
+  assert.equal(g.state, "puffcheck");
+  const run = (sec) => { for (let i = 0; i < sec * 20; i++) g.update(0.05); };
+  tracker.face = { present: true, ...base, cheekW: 1.03, cheekZ: 0.02 }; run(4);
+  assert.equal(g.state, "cue", "then the puff move itself");
+  assert.ok(mouth.learntPuff() && mouth.learntPuff().cheekW > 0.02, JSON.stringify(mouth.learntPuff()));
+  run(6);
+  assert.ok(g.results.length >= 1 && g.results[0].done, "the learnt puff is held for the level's time");
+  mouth.forgetPuff();
+});
+
 test("Room check: a voice during the check is not taken for the room", async () => {
   const { roomLevel } = await import("../js/kit/mic.js");
   const quietRoom = Array.from({ length: 60 }, (_, i) => -62 + (i % 5) * 0.5);
