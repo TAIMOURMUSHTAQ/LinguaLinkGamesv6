@@ -61,19 +61,25 @@ export class Runner {
     // (see _govern). The picture stays sharp enough and the game stays smooth and responsive.
     let coarse = false;
     try { coarse = window.matchMedia("(pointer: coarse)").matches; } catch {}
-    this._dprCap = coarse ? 1.5 : 2;
+    // 2 pixels per point keeps text sharp on phones; a device that cannot keep up drops to 1 (_govern)
+    this._dprCap = 2;
     const fit = () => {
       const box = this.els.stage.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, this._dprCap);
       const scale = Math.min(box.width / W, box.height / H) || 1;
       const cw = Math.round(W * scale), ch = Math.round(H * scale);
-      this.canvas.style.width = cw + "px";
-      this.canvas.style.height = ch + "px";
-      this.canvas.width = Math.max(1, Math.round(cw * dpr));
-      this.canvas.height = Math.max(1, Math.round(ch * dpr));
+      const pw = Math.max(1, Math.round(cw * dpr)), ph = Math.max(1, Math.round(ch * dpr));
+      // Setting a canvas's size wipes it. On phones the address bar slides in and out and fires many
+      // resize events, so the size is only set when it really changes, and the picture is drawn again
+      // at once: the screen never shows a blank (flickering) frame.
+      if (this.canvas.style.width !== cw + "px") this.canvas.style.width = cw + "px";
+      if (this.canvas.style.height !== ch + "px") this.canvas.style.height = ch + "px";
+      if (this.canvas.width === pw && this.canvas.height === ph) return;
+      this.canvas.width = pw;
+      this.canvas.height = ph;
       this.scale = scale * dpr;
       if (this.state === "intro" || this.state === "loading" || this.state === "calibrate") this._drawIdle();
-      else if (this.state === "done" || this.paused) this._drawFrame();
+      else if (this.game) this._drawFrame();
     };
     fit();
     this._fit = fit;
@@ -522,6 +528,33 @@ export class Runner {
     if (this.game) this.game.draw(c);
     else this._drawIdle();
     this.fx.draw(c);
+    if (this.config.tune && this.mic) this._drawVoicePanel(c);
+  }
+
+  // ?tune=1 in the address: what the microphone hears, live, so voice detection can be checked and
+  // tuned on a real device (room level, voice, pitch, the vowel heard and how close it is to A, E, O).
+  _drawVoicePanel(c) {
+    const m = this.mic, r1 = (v) => (typeof v === "number" ? Math.round(v * 10) / 10 : "-");
+    const d = m.vowelDist || {};
+    const rows = [
+      `room ${r1(m.floorDb)} dB   voice ${r1(m.rise)} dB above (needs ${m.onDb})   level ${Math.round((m.level01 || 0) * 100)}%`,
+      `voiced ${m.voiced ? "YES" : "no"}   speech ${m.speech ? "YES" : "no"}   pitch ${m.periodic ? "YES " + Math.round(m.pitchHz || 0) + " Hz" : "no"}   hiss ${m.hiss ? "yes" : "no"}   game speaking ${m.selfSound ? "yes" : "no"}`,
+      `resonances F1 ${m.formants ? Math.round(m.formants.f1) : "-"}  F2 ${m.formants ? Math.round(m.formants.f2) : "-"}   heard vowel ${m.vowel || "-"}   hum ${r1(m.humRatio)}`,
+      `distance  A ${r1(d.aah)}  E ${r1(d.ehh)}  O ${r1(d.ooo)}  I ${r1(d.eee)}  U ${r1(d.uuu)}   (smaller is closer)   own vowels: ${m.personal ? Object.keys(m.personal).join(" ") : "not learnt"}`,
+    ];
+    // the child's own fingerprints (vowelprint.js): under about 3 is a match, the fingerprint decides
+    if (m.templateDistances) {
+      const td = m.templateDistances(), keys = Object.keys(td);
+      rows.push(keys.length
+        ? `fingerprint  ${keys.map((v) => `${v} ${r1(td[v])}`).join("  ")}   heard ${(m.heardTemplate && m.heardTemplate(0.5)) || "-"}   (under ~3 is a match)`
+        : "fingerprint  none learnt yet (each vowel is learnt the first time it is held)");
+    }
+    c.save();
+    c.setTransform(this.scale, 0, 0, this.scale, 0, 0);
+    c.fillStyle = "rgba(0,0,0,0.72)"; c.fillRect(8, H - 20 - rows.length * 24, W - 16, rows.length * 24 + 12);
+    c.font = '600 17px "Lexend", system-ui, sans-serif'; c.fillStyle = "#fff"; c.textAlign = "left"; c.textBaseline = "middle";
+    rows.forEach((t, i) => c.fillText(t, 20, H - 8 - (rows.length - i) * 24 + 4));
+    c.restore();
   }
 
   _drawIdle() {

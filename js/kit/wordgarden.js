@@ -2,8 +2,10 @@
 // Pure functions, no browser needed (unit tested).
 //
 // Two ways to choose the words (Word Garden's card, or Grown-ups > Settings):
-//   "all" (the game's mix): each level mixes many sounds, never the same sound twice in a row.
-//   one sound (for example "s", or an Urdu letter): every word practises that sound.
+//   "all" (the game's mix): the sounds in the list's own order (/p/, /b/, /t/, /d/ ...), one word each,
+//     never the same sound twice in a row.
+//   one sound (for example "s", or an Urdu letter): that sound's words, in the list's own order.
+// The list's sequence is kept: nothing is shuffled. Each play continues where the last one stopped.
 // Levels: 1 the sound at the start of the word, 2 in the middle, 3 at the end, 4 all three positions,
 // 5 a big mix. Each play of a level moves on through the list, so the words change from play to play.
 import { SOUNDS_EN, WORDS_EN, GRAPHEMES_EN, PICTURES_EN, SOUNDS_UR, WORDS_UR } from "./wordlist.js";
@@ -77,31 +79,44 @@ export function gardenItems({ lang = "en", sound = "all", levelIndex = 0, play =
   }
   const out = [];
   if (sound !== "all" && words[sound]) {
-    // one sound: its words at the level's positions; a position with too few words is topped up
-    // from the sound's other positions (still the same sound, still the word list)
+    // one sound: its words at the level's positions, in the list's order; a position with too few
+    // words is topped up from the sound's other positions (still the same sound, still the list)
     let pool = L.positions.flatMap((p) => (words[sound][p] || []).map((w) => [w, p]));
     if (pool.length < Math.min(L.count, 4)) pool = pool.concat(POSITIONS.filter((p) => !L.positions.includes(p)).flatMap((p) => (words[sound][p] || []).map((w) => [w, p])));
     const seen = new Set();
-    pool = shuffled(pool, 7 + levelIndex * 31 + play * 101).filter(([w]) => (seen.has(w) ? false : seen.add(w)));
+    pool = pool.filter(([w]) => (seen.has(w) ? false : seen.add(w)));
+    if (L.positions.length > 1) {
+      // all positions: take turns start, middle, end, each in the list's order
+      const by = L.positions.map((p) => pool.filter(([, q]) => q === p));
+      const mixed = [];
+      for (let i = 0; mixed.length < pool.length; i++) for (const list of by) if (list[i]) mixed.push(list[i]);
+      pool = mixed;
+    }
     const start = (play * L.count) % Math.max(1, pool.length);
     for (let i = 0; i < Math.min(L.count, pool.length); i++) { const [w, p] = pool[(start + i) % pool.length]; out.push(itemOf(w, sound, p, lang)); }
     return out;
   }
-  // the game's mix: one word from each of many sounds, never the same sound twice in a row
-  const ids = shuffled(soundsFor(lang).map((s) => s.id), 13 + levelIndex * 17 + play * 7);
-  const used = new Set();
-  for (let k = 0; out.length < L.count && k < ids.length * 4; k++) {
-    const id = ids[k % ids.length];
-    if (out.length && out[out.length - 1].sound === id) continue;
-    const position = L.positions[(k + play) % L.positions.length];
+  // the game's mix: the sounds in the list's order, one word each; each play goes on through the
+  // sounds and, once round, on to each sound's next word
+  const ids = soundsFor(lang).map((s) => s.id);
+  const n = ids.length;
+  for (let k = 0; out.length < L.count && k < n * 4; k++) {
+    const step = play * L.count + k;                    // position in the endless walk through the list
+    const id = ids[step % n];
+    const position = L.positions[step % L.positions.length];
     const list = (words[id] && words[id][position]) || [];
     if (!list.length) continue;
-    const w = list[(play + Math.floor(k / ids.length) + levelIndex) % list.length];
-    if (used.has(w)) continue;
-    used.add(w);
+    const w = list[Math.floor(step / n) % list.length];
+    if (out.some((x) => x.plain === w)) continue;
     out.push(itemOf(w, id, position, lang));
   }
   return out;
+}
+
+// Urdu: the sound of a letter, as it is said with "a" ("م" is "ما", maa; "س" is "سا", saa).
+const URDU_SOUND = { "ا": "آ", "ع": "عا", "ں": "نون غنہ", "ء": "ہمزہ", "ے": "اے", "ی": "یا", "و": "وا", "ہ": "ہا" };
+export function urduLetterSound(letter) {
+  return URDU_SOUND[letter] || letter + "ا";
 }
 
 // ---------- matching what the recogniser heard ----------

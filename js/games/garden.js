@@ -18,7 +18,7 @@ import { W, H, sky, label, lumi, rr, rng, clamp, ring } from "../kit/draw.js";
 import { sun, cloudLayer, butterflies, bee, flowerRow, motes, rays, spring } from "../kit/scene.js";
 import { speakWord } from "../kit/audio.js";
 import { hasRecogniser, localStatus, WordListener, judgeAlternatives } from "../kit/speech.js";
-import { GARDEN_LEVELS, gardenItems, soundsFor, isSound, nearMiss, normaliseUrdu, editDistance } from "../kit/wordgarden.js";
+import { GARDEN_LEVELS, gardenItems, soundsFor, isSound, nearMiss, normaliseUrdu, editDistance, urduLetterSound } from "../kit/wordgarden.js";
 import { load, save } from "../kit/storage.js";
 import { t as tr } from "../kit/i18n.js";
 import { clampScore } from "../kit/results.js";
@@ -208,7 +208,8 @@ function drawWordCard(c, item, sound, attempts, state, t, cueStep = 0, maxAttemp
   const plain = plainWord(item.word);
   if (urdu) {
     // Urdu letters join, so the word is not split: the letter being practised is shown beside it
-    if (item.sound) label(c, `${t("letterLbl")}: ${item.sound} · ${t("pos_" + (item.position || "mixed"))}`, 640, 365, { size: 30, color: "#2b2d42", shadow: false, weight: 600 });
+    // the letter with its sound: "م (ما)", said "maa"
+    if (item.sound) label(c, `${t("letterLbl")}: ${item.sound} (${urduLetterSound(item.sound)}) · ${t("pos_" + (item.position || "mixed"))}`, 640, 365, { size: 30, color: "#2b2d42", shadow: false, weight: 600 });
     if (attempts > 0 && state !== "check") label(c, t("tryOf", { n: attempts + 1, m: maxAttempts }), 640, 452, { size: 24, color: "#5c5f7a", shadow: false, weight: 500 });
     return;
   }
@@ -259,7 +260,7 @@ const def = {
     const lang = config.gardenLang === "ur" ? "ur" : "en";
     return [
       { key: "gardenLang", label: tr("gardenLangLbl"), options: [{ value: "en", label: "English" }, { value: "ur", label: "اردو" }] },
-      { key: "gardenSound", label: tr("soundLbl"), options: [{ value: "all", label: tr("gameMix") }, ...soundsFor(lang).map((x) => ({ value: x.id, label: lang === "ur" ? `${x.id}  (${x.example})` : `${x.ipa}  ${x.example}` }))] },
+      { key: "gardenSound", label: tr("soundLbl"), options: [{ value: "all", label: tr("gameMix") }, ...soundsFor(lang).map((x) => ({ value: x.id, label: lang === "ur" ? `${x.id} (${urduLetterSound(x.id)})  ${x.example}` : `${x.ipa}  ${x.example}` }))] },
     ];
   },
   // a new language has its own sounds: the choice goes back to the game's mix if it does not fit

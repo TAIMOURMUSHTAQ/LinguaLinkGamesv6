@@ -2,7 +2,9 @@
 // "mmm", then O "ooo", A "aaa", E "ehh", and a hiss "sss" at the top. Each ring shows its letter (M, O,
 // A, E, S): make that sound and the bird flies to its height. Silence glides straight. The vowels are
 // judged strictly (vowel.js clearVowel); the hum by how little energy it has above 600 Hz, and the hiss
-// by its high, noisy sound. The voice check (shared with Balloon Breeze) learns the child's own A, E, O
+// by its high, noisy sound. There is no voice check at the start: each ring's sound is shown and said as
+// it comes, and the game learns the child's own O, A and E the first time each is made (as Balloon
+// Breeze does; vowels learnt in either game are reused for the visit). Formerly a voice check learnt the child's own A, E, O
 // and hum first; it runs once per visit and every level reuses it.
 // Two ways to play (chosen on the level card):
 //   Keep flying: the bird never stops and the child steers through the rings.
@@ -11,7 +13,9 @@
 import { W, H, sky, hills, label, clamp, lerp, glow, star, vignette, rr } from "../kit/draw.js";
 import { sun, cloudLayer, flock, motes, butterflies, twinkles, windStreaks, SparkTrail } from "../kit/scene.js";
 import { VOWEL_HEIGHT } from "../kit/vowel.js";
-import { createVowelCheck, savedVowels, savedHum, humChecked, forgetVowels, VOWEL_LETTER } from "../kit/vowelcheck.js";
+import { savedVowels, savedHum, rememberVowels, forgetVowels, savedPrints, rememberPrints, learnPrint, VOWEL_LETTER } from "../kit/vowelcheck.js";
+import { learnVowel } from "../kit/vowel.js";
+import { speakWord } from "../kit/audio.js";
 import { clampScore } from "../kit/results.js";
 
 // All five sounds on every level. Later levels are faster, with smaller rings, a mixed order, and a
@@ -116,7 +120,7 @@ const def = {
   touchLabel: "Drag up and down on the screen, or use the arrow keys",
   skills: ["Vowels and other sounds", "Listening and answering", "Quiet and loud voice"],
   howTo: [
-    ["🎤", "First make each sound when asked: O, A, E and a hum mmm. The game learns your voice."],
+    ["🎤", "Each ring tells you its sound. Make it, and the game learns your voice as you play."],
     ["🔤", "Every ring has a letter. Bottom to top: M (hum mmm), O, A, E, S (hiss sss)."],
     ["🐦", "Say the letter's sound and the bird flies to it. Be quiet to fly straight."],
     ["⭐", "Fly through as many rings as you can."],
@@ -139,9 +143,10 @@ const def = {
     const saved = sensors ? savedVowels() : null;
     const savedHumLimit = sensors ? savedHum() : null;
     if (saved) ctx.mic.setAnchors(saved);
+    if (sensors && ctx.mic.setTemplates) ctx.mic.setTemplates(savedPrints());
     if (savedHumLimit) ctx.mic.humLimit = savedHumLimit;
-    // the voice check: the hum and the vowels; only the hum if the vowels were learnt earlier
-    const checkSounds = saved && humChecked() ? null : saved ? ["mmm"] : ["ooo", "aah", "ehh", "mmm"];
+    // no voice check: vowels are learnt as they are made (below)
+    const checkSounds = null;
     const g = {
       done: false,
       phase: sensors && checkSounds ? "check" : "play",
@@ -159,7 +164,10 @@ const def = {
       lenience: L.lenience,
     };
     if (sensors && saved && !checkSounds) ctx.event("voice_check_reused", {});
-    const check = g.phase === "check" ? createVowelCheck(ctx, { colors: VOWEL_COLOR, vowels: checkSounds, onDone: () => { g.phase = "play"; } }) : null;
+    g.learn = {};          // vowel -> {samples, voiceT} while it is being learnt
+    // say a ring's sound out loud ("Say O, ooo"), also when spoken instructions are off
+    const announce = (v) => { if (ctx.mode === "sensors") speakWord(ctx.t("sayLetter", { l: VOWEL_LETTER[v], s: ctx.t("snd_" + v) }), ctx.lang || "en"); };
+    g.lastAnnounced = null;
     // Easier after 2 missed rings in a row: rings 18% taller, 12% slower, sound match looser, per step.
     // Harder after 5 hits in a row: rings 10% smaller, 10% faster, per step.
     g.adaptive = ctx.makeAdaptive({ upAfter: 5, downAfter: 2 });
@@ -171,7 +179,7 @@ const def = {
     const nextRing = () => rings.find((r) => r.state === "open");
 
     g.onPointer = (type, x, y) => { if (ctx.mode === "touch" && (type === "down" || ctx.pointer.down)) { g.targetH = clamp((BOTTOM - y) / (BOTTOM - TOP), 0, 1); if (g.waiting) g.touched = true; } };
-    g.start = () => { if (check) check.begin(); };
+    g.start = () => { const nx = nextRing(); if (nx) { announce(nx.v); g.lastAnnounced = nx; } };
 
     const hearing = () => ctx.mic && (ctx.mic.speech || ctx.mic.voiced) && !ctx.mic.selfSound;
 
@@ -180,9 +188,10 @@ const def = {
     const heardVowel = () => {
       const mic = ctx.mic;
       if (!hearing()) return null;
-      if (mic.hiss) return "sss";
-      if (mic.isHum && mic.isHum()) return "mmm";
+      // a clear vowel first (so "eee" or "ooo" is never taken for a hum), then the hiss, then the hum
       for (const v of GLIDE_VOWELS) if (mic.isClearVowel ? mic.isClearVowel(v, g.lenience) : mic.isVowel(v, g.lenience)) return v;
+      if (mic.hiss) return "sss";
+      if (mic.isHum && mic.isHum() && !(mic.vowel && ["eee", "ehh", "aah"].includes(mic.vowel))) return "mmm";
       return null;
     };
 
@@ -224,11 +233,33 @@ const def = {
     };
 
     g.update = (dt) => {
-      if (g.phase === "check") { check.update(dt); return; }
       const mic = ctx.mic;
       g.playT += dt;
       moveBird(dt);
       const nx = nextRing();
+      // each new ring's sound is said as it comes (Keep flying; Stop and say says it at the ring)
+      if (!stopMode && nx && nx !== g.lastAnnounced && nx.x < W + 120 && (!g.lastAnnounced || g.lastAnnounced.v !== nx.v)) { announce(nx.v); g.lastAnnounced = nx; }
+      else if (nx && nx !== g.lastAnnounced && g.lastAnnounced && g.lastAnnounced.v === nx.v) g.lastAnnounced = nx;
+      // learn the child's own vowel the first time the next ring asks for it and it is heard
+      // (any steady voiced sound counts, as the ring asks for this vowel; not a hum, a hiss, or a sound
+      // that is clearly another vowel already learnt, such as the previous ring's still being held)
+      if (sensors && nx && GLIDE_VOWELS.includes(nx.v) && !(mic.templates || mic.personal || {})[nx.v] && hearing() && mic.periodic && !mic.hiss && (mic.lastPrint || mic.formants)
+          && !(mic.isHum && mic.isHum()) && !GLIDE_VOWELS.some((o) => o !== nx.v && (mic.templates || {})[o] && mic.isClearVowel(o, 0.5))) {
+        const l = (g.learn[nx.v] ||= { samples: [], prints: [], last: null, voiceT: 0 });
+        l.voiceT += dt;
+        if (mic.formants) l.samples.push([mic.formants.f1, mic.formants.f2]);
+        if (mic.lastPrint !== l.last) { l.prints.push(mic.lastPrint); l.last = mic.lastPrint; }
+        if (l.voiceT >= 1.6) {
+          const others = { ...(mic.personal || {}) };
+          const a = learnVowel(nx.v, l.samples, others);
+          if (a) { const all = { ...others, [nx.v]: a }; mic.setAnchors(all); rememberVowels(all); }
+          const tpl = mic.setTemplates ? learnPrint(nx.v, l.prints.filter(Boolean), mic.templates) : null;
+          if (tpl) { mic.setTemplates({ ...mic.templates, [nx.v]: tpl }); rememberPrints(mic.templates); }
+          ctx.event("vowel_learnt", { sound: nx.v, learnt: !!a, print: !!tpl, samples: l.samples.length, frames: l.prints.length });
+          // learnt: never again this visit; refused (too like another vowel): try again on a later ring
+          g.learn[nx.v] = tpl || a ? { samples: [], prints: [], voiceT: -1e9 } : null;
+        }
+      }
       if (sensors && hearing()) {
         g.voiceT += dt;
         if (!mic.voiced) g.quietT += dt;
@@ -241,7 +272,7 @@ const def = {
         if (!nx.prompted) {
           nx.prompted = true; g.waiting = true; g.waitT = 0; g.inGapT = 0; g.promptAnswered = false; g.touched = false;
           ctx.event("prompt", { ring: g.passed + 1, vowel: nx.v });
-          ctx.say("checkSay", { s: ctx.t("snd_" + nx.v) });
+          announce(nx.v);
         }
         if (g.waiting) {
           g.waitT += dt;
@@ -305,7 +336,6 @@ const def = {
       sparks.draw(c);
       drawBird(c, BIRD_X, yOf(g.birdH), ctx.time, tilt);
       vignette(c, 0.16);
-      if (g.phase === "check") { check.draw(c); return; }
       // what to say for the next ring
       const nx = nextRing();
       if (nx) {

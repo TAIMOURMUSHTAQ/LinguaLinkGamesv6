@@ -5,13 +5,17 @@
 // sound it heard. The sound must last a moment before the balloon fills, so a passing sound never
 // counts. Every level uses A, E and O. Holds are 5, 10, 15, 20 and 25 seconds, level by level;
 // the child may take a breath, and the balloon waits. Later levels ask for a closer match.
-// Sensor mode: microphone with vowel recognition (after a short voice check that learns the child's
+// Each round shows and says its sound ("Say A, aaa"); there is no voice check at the start: the game
+// learns each vowel the first time the child holds it (vowel.js learnVowel).
+// Sensor mode: microphone with vowel recognition (the vowels learnt during play from the child's
 // own A, E and O). Touch mode: press and hold the big button (or the space bar), where the adult
 // judges the sound.
 import { W, H, sky, hills, ring, label, lumi, clamp, lerp, rr, vignette, star, glow } from "../kit/draw.js";
 import { sun, rainbow, cloudLayer, farBalloon, flock, swayTree, flowerRow, windStreaks, motes, SparkTrail } from "../kit/scene.js";
 import { clampScore } from "../kit/results.js";
-import { createVowelCheck, savedVowels, VOWEL_LETTER } from "../kit/vowelcheck.js";
+import { savedVowels, rememberVowels, savedPrints, rememberPrints, learnPrint, VOWEL_LETTER } from "../kit/vowelcheck.js";
+import { learnVowel } from "../kit/vowel.js";
+import { speakWord } from "../kit/audio.js";
 
 // lenience: 1 accepts close neighbours (ooo for uuu), 0 needs a clear match. It tightens level by level.
 // target: seconds of the sound for each balloon: 5, 10, 15, 20, 25.
@@ -35,7 +39,8 @@ export function scoreBreeze({ roundsDone, rounds, steadyPct = null }) {
   return clampScore(base * 0.85 + steadyPct * 0.15);
 }
 
-const READY_SEC = 1.4; // pause before each round starts listening
+const READY_SEC = 2.2; // the round's prompt ("Say A, aaa") is shown and said before it listens
+const LEARN_SEC = 1.6; // voice time used to learn a vowel the first time it is held
 const MATCH_SEC = 0.2; // the right sound must last this long before the balloon fills
 
 const BALLOON = { aah: "#ff7aa2", ooo: "#7ab8ff", ehh: "#9be38f", eee: "#ffc94a", uuu: "#c49bff" };
@@ -162,13 +167,14 @@ const def = {
     g.adaptive = ctx.makeAdaptive({ upAfter: 2, downAfter: 1 });
     const limitFor = (target) => target * 2 + 10; // seconds allowed per round, breaths included
 
-    // First the voice check (once per visit), so the game knows this child's own five vowels.
+    // No voice check at the start: each round asks for its own sound, and the game learns the child's
+    // vowel the first time it is held (learnVowel). Vowels learnt earlier this visit are reused.
     const sensors0 = ctx.mode === "sensors" && ctx.mic;
     const saved = sensors0 ? savedVowels() : null;
-    if (saved) ctx.mic.setAnchors(saved);
-    g.phase = sensors0 && !saved ? "check" : "play";
-    if (sensors0 && saved) ctx.event("voice_check_reused", {});
-    const check = g.phase === "check" ? createVowelCheck(ctx, { colors: BALLOON, onDone: () => { g.phase = "play"; newRound(); } }) : null;
+    if (saved) { ctx.mic.setAnchors(saved); ctx.event("voice_check_reused", {}); }
+    if (sensors0 && ctx.mic.setTemplates) ctx.mic.setTemplates(savedPrints());
+    g.phase = "play";
+    g.learn = null;        // {sound, samples, voiceT} while the round's vowel is being learnt
 
     const newRound = () => {
       g.target = L.target;
@@ -182,8 +188,13 @@ const def = {
       g.progress = 0; g.hold = 0; g.roundLongest = 0; g.roundTime = 0; g.holdDb = []; g.failed = false;
       g.stars = Array.from({ length: STEPS - 1 }, (_, i) => ({ p: (i + 1) / STEPS, got: false }));
       g.ready = READY_SEC;
-      ctx.event("round_start", { round: g.round + 1, sound: g.sound, target_sec: g.target });
-      ctx.say("sayTarget", { s: ctx.t("snd_" + g.sound) });
+      // learn this vowel during the round if it is not known yet
+      const known = sensors0 && (ctx.mic.templates ? ctx.mic.templates[g.sound] : ctx.mic.personal && ctx.mic.personal[g.sound]);
+      g.learn = sensors0 && !known ? { sound: g.sound, samples: [], prints: [], lastPrint: null, voiceT: 0 } : null;
+      ctx.event("round_start", { round: g.round + 1, sound: g.sound, target_sec: g.target, learning: !!g.learn });
+      // the prompt is always said (not only with spoken instructions on): "Say A, aaa"
+      if (ctx.mode === "sensors") speakWord(ctx.t("sayLetter", { l: VOWEL_LETTER[g.sound], s: ctx.t("snd_" + g.sound) }), ctx.lang || "en");
+      else ctx.say("sayTarget", { s: ctx.t("snd_" + g.sound) });
     };
     const celebrate = (sec) => { g.celebrate = sec; g.celebrateLen = sec; };
 
@@ -191,10 +202,9 @@ const def = {
       ctx.setControls([{ id: "hold", kind: "hold", label: ctx.t("holdButton"), onDown: () => (g.touchDown = true), onUp: () => (g.touchDown = false) }]);
     }
 
-    g.start = () => { if (check) check.begin(); else newRound(); };
+    g.start = () => newRound();
 
     g.update = (dt) => {
-      if (g.phase === "check") { check.update(dt); return; }
       if (g.celebrate > 0) {
         g.celebrate -= dt;
         // a finished round floats up; a missed round sinks gently back
@@ -221,15 +231,38 @@ const def = {
         // Progress needs a real voice (clear pitch, not noise, a clap, a hiss or a whisper) making
         // the sound asked for.
         const mic = ctx.mic;
-        // a real voice, not a hiss and not a hum ("mmm" is not "ooo")
-        const heard = (mic.voiced || mic.speech) && mic.steadyVoice && !mic.hiss && !(mic.isHum && mic.isHum());
+        // a real voice (a clear pitch), not a hiss, noise or a whisper
+        const heard = (mic.voiced || mic.speech) && mic.periodic && !mic.hiss;
         if (heard) g.speechFrames++;
-        // the strict test, and the sound must last a moment (MATCH_SEC) before the balloon fills
-        const match = heard && mic.isClearVowel(g.sound, g.lenience);
-        if (match) { g.matchT += dt; g.missT = 0; } else { g.missT += dt; if (g.missT > 0.15) g.matchT = 0; }
+        // Learning this vowel (its first round): the child's own sound is collected for a moment, with a
+        // forgiving test meanwhile, then the strict test uses the child's own vowel.
+        if (g.learn && heard && (mic.formants || mic.lastPrint)) {
+          g.learn.voiceT += dt;
+          if (mic.formants) g.learn.samples.push([mic.formants.f1, mic.formants.f2]);
+          // one fingerprint per analysis frame (the mic analyses about 20 times a second)
+          if (mic.lastPrint && mic.lastPrint !== g.learn.lastPrint) { g.learn.prints.push(mic.lastPrint); g.learn.lastPrint = mic.lastPrint; }
+          if (g.learn.voiceT >= LEARN_SEC) {
+            const others = { ...(mic.personal || {}) };
+            const anchor = learnVowel(g.learn.sound, g.learn.samples, others);
+            if (anchor) { const all = { ...others, [g.learn.sound]: anchor }; mic.setAnchors(all); rememberVowels(all); }
+            // the fingerprint is what recognises this vowel from now on (vowelprint.js)
+            const tpl = mic.setTemplates ? learnPrint(g.learn.sound, g.learn.prints, mic.templates) : null;
+            if (tpl) { mic.setTemplates({ ...mic.templates, [g.learn.sound]: tpl }); rememberPrints(mic.templates); }
+            ctx.event("vowel_learnt", { sound: g.learn.sound, learnt: !!anchor, print: !!tpl, samples: g.learn.samples.length, frames: g.learn.prints.length });
+            g.learn = null;
+          }
+        }
+        // the strict test (forgiving while learning), and the sound must last a moment (MATCH_SEC)
+        const match = heard && (g.learn ? mic.isVowel(g.sound, 1) : mic.isClearVowel(g.sound, g.lenience));
+        if (match) { g.matchT += dt; g.missT = 0; } else { g.missT += dt; if (g.missT > 0.25) g.matchT = 0; }
         voicing = match && g.matchT >= MATCH_SEC;
         if (match) { g.targetFrames++; g.wrongT = 0; g.heardAs = null; }
-        else if (mic.voiced || mic.speech) { g.wrongT += dt; if (mic.vowel && mic.vowel !== g.sound) g.heardAs = mic.vowel; }
+        else if (mic.voiced || mic.speech) {
+          g.wrongT += dt;
+          // the learnt fingerprints name the sound when there are any; the resonances otherwise
+          const as = mic.templates && Object.keys(mic.templates).length ? mic.heardTemplate(0.5) : mic.vowel;
+          if (as && as !== g.sound) g.heardAs = as;
+        }
         else { g.wrongT = Math.max(0, g.wrongT - dt * 2); if (g.wrongT === 0) g.heardAs = null; }
         if (voicing) {
           g.holdDb.push(ctx.mic.rise);
@@ -299,7 +332,6 @@ const def = {
       if (stepNow > (g.stepShown || 0)) { ctx.fx.burst(W / 2, by, { n: 18, speed: 300 }); ctx.fx.ring && ctx.fx.ring(W / 2, by, { r: 180, color: "rgba(255,255,255,0.8)" }); }
       g.stepShown = stepNow;
       vignette(c, 0.18);
-      if (g.phase === "check") { check.draw(c); return; }
       // hold ring, marked in steps, with whole seconds
       ring(c, 150, 150, 70, g.progress, { color: "#ef476f", track: "rgba(255,255,255,0.45)", width: 14 });
       c.save(); c.strokeStyle = "#fff"; c.lineWidth = 4;
@@ -330,7 +362,15 @@ const def = {
         c.fillStyle = voicing ? "#06d6a0" : "#f4a261"; rr(c, 1170, 220 + 300 * (1 - lv), 34, 300 * lv, 17); c.fill();
       }
       const askFor = ctx.t("sayTarget", { s: ctx.t("snd_" + g.sound) });
-      if (g.ready > 0 && g.celebrate <= 0) label(c, ctx.t("getReady"), W / 2, 640, { size: 38 });
+      // the round's prompt, big, while it is said: "Say A, aaa"
+      if (g.ready > 0 && g.celebrate <= 0) {
+        const k = Math.min(1, (READY_SEC - g.ready) / 0.3);
+        c.save(); c.globalAlpha = k; c.fillStyle = "rgba(43,45,66,0.55)"; c.fillRect(0, 0, W, H); c.restore();
+        c.save(); c.globalAlpha = k; c.fillStyle = "rgba(255,255,255,0.96)"; rr(c, W / 2 - 300, 190, 600, 300, 44); c.fill(); c.restore();
+        c.save(); c.fillStyle = BALLOON[g.sound]; c.beginPath(); c.arc(W / 2, 300, 78, 0, Math.PI * 2); c.fill(); c.restore();
+        label(c, VOWEL_LETTER[g.sound], W / 2, 304, { size: 104, color: "#2b2d42", shadow: false, weight: 800 });
+        label(c, ctx.t("sayLetter", { l: VOWEL_LETTER[g.sound], s: ctx.t("snd_" + g.sound) }), W / 2, 432, { size: 46, color: "#2b2d42", shadow: false, weight: 800 });
+      }
       else if (g.celebrate > 0) { /* the round's praise is on screen */ }
       else if (g.warn > 0) label(c, ctx.t("softer"), W / 2, 640, { size: 38, color: "#fff" });
       // another sound is going on: say what was heard and what is wanted

@@ -1,6 +1,7 @@
 // Microphone input: loudness, voice on/off, and pitch, all computed in the browser.
 // No audio is stored or sent anywhere.
 import { speakerBusy } from "./audio.js";
+import { fingerprint, meanPrint, matchTemplate, nearestTemplate, templateDistance } from "./vowelprint.js";
 import { VOWELS, voiceType, vowelDistances, nearestVowel, matchesVowel, clearVowel, humRatio, HUM_RATIO, directionFrom, formantsFrom, cleanSpectrum, bandEnergy, isHiss } from "./vowel.js";
 
 // ---------- pure helpers (unit tested) ----------
@@ -136,6 +137,10 @@ export class Mic {
     this._f1s = [];
     this._f2s = [];
     this.personal = null;   // the child's own vowels from the voice check (vowel.js makeVowelAnchors)
+    this.print = null;      // the sound's fingerprint (vowelprint.js), averaged over the last 3 frames
+    this.lastPrint = null;  // the latest single-frame fingerprint (for learning a template)
+    this._prints = [];
+    this.templates = {};    // the child's own vowel fingerprints {vowel: template}
     this._quietT = 0;
     this._noPitchT = 0;
     this.stopped = false;
@@ -144,6 +149,9 @@ export class Mic {
 
   // Use the child's own vowels (or null for the textbook values).
   setAnchors(anchors) { this.personal = anchors || null; this.vowelDist = null; }
+
+  // Use the child's own vowel fingerprints (vowelprint.js makeTemplate), {vowel: template}.
+  setTemplates(templates) { this.templates = templates ? { ...templates } : {}; }
 
   _constraints() {
     return { audio: { echoCancellation: this.echoCancellation, noiseSuppression: false, autoGainControl: false, channelCount: { ideal: 1 } } };
@@ -231,7 +239,7 @@ export class Mic {
 
   _resetVowel() {
     this.speech = false; this.speechRise = 0; this.formants = null; this.vowelDist = null; this.vowel = null; this.hiss = false;
-    this._f1s = []; this._f2s = [];
+    this._f1s = []; this._f2s = []; this.print = null; this.lastPrint = null; this._prints = [];
   }
 
   // Call once per frame.
@@ -271,8 +279,11 @@ export class Mic {
     if (this._frameT > 0) return;
     this._frameT = 0.05;
     if (this.vowelsEnabled) this._analyseVowel();
-    if (this.voiced || this.speech) {
+    // The pitch is also looked for in a sound under the loudness bar (a quiet microphone, a soft
+    // voice): a voice has a steady pitch and room noise has none, so a steady pitch counts as a voice.
+    if (this.voiced || this.speech || this.rise > 2) {
       const raw = detectPitch(this.buf, this.ctx.sampleRate);
+      if (raw && this._steady >= 2 && this.rise > 2) { this.voiced = true; this._hang = Math.max(this._hang, 0.25); }
       // the same pitch several readings in a row is a real voice; a whisper or noise only flickers
       this._steady = raw && this._lastRaw && Math.abs(raw - this._lastRaw) / this._lastRaw < 0.12 ? this._steady + 1 : 0;
       this._lastRaw = raw;
@@ -301,8 +312,11 @@ export class Mic {
     }
     const quiet = !this.voiced && !this.speech;
     this._quietT = quiet ? this._quietT + dt : 0;
-    // down quickly (the room is quieter than thought), up slowly (never chase the end of a word)
-    if (this._quietT > 1) this.floorDb += (this.db - this.floorDb) * Math.min(1, dt * (this.db < this.floorDb ? 0.8 : 0.15));
+    // Down quickly (the room is quieter than thought). Up slowly, and only for a level close to the
+    // room's: a sustained voice just under the "voice" bar must never be absorbed into the room level
+    // (that made held vowels vanish while short sounds still worked). A clear pitch is never the room.
+    const up = this.db - this.floorDb;
+    if (this._quietT > 1 && (up < 0 || (up < 2.5 && !this.periodic))) this.floorDb += up * Math.min(1, dt * (up < 0 ? 0.8 : 0.15));
     // A "voice" with no pitch for a long time is steady noise (a fan, headset hiss) the room check
     // missed. A whisper is not affected: it shows as speech in the vowel band.
     if (this.voiced && !this.periodic && !this.speech) this._noPitchT += dt; else this._noPitchT = 0;
@@ -340,7 +354,13 @@ export class Mic {
     const thresh = this.speech ? this.softDb - 2 : this.softDb;
     this.speech = this.speechRise > thresh;
     this.hiss = this.speech && isHiss(clean, this.binHz);
-    const fm = this.speech && !this.hiss ? formantsFrom(clean, this.binHz) : null;
+    // the fingerprint of a voiced sound (not a hiss), steadied over the last 3 frames
+    const fp = this.speech && !this.hiss ? fingerprint(clean, this.binHz) : null;
+    this.lastPrint = fp;
+    if (fp) { this._prints.push(fp); if (this._prints.length > 3) this._prints.shift(); }
+    else this._prints = [];
+    this.print = meanPrint(this._prints);
+    const fm =this.speech && !this.hiss ? formantsFrom(clean, this.binHz) : null;
     if (!fm) {
       if (!this.speech || this.hiss) { this.formants = null; this.vowelDist = null; this.vowel = null; this._f1s = []; this._f2s = []; }
       return;
@@ -357,19 +377,41 @@ export class Mic {
   }
 
   // Is the child making this vowel? See matchesVowel for lenience.
+  // A vowel whose fingerprint this child has given is judged by it; others by their resonances.
   isVowel(target, lenience = 0.5) {
-    return matchesVowel(this.vowelDist, target, lenience);
+    const m = this._templateMatch(target, Math.min(1, lenience + 0.25));
+    return m == null ? matchesVowel(this.vowelDist, target, lenience) : m;
+  }
+
+  _templateMatch(target, lenience) {
+    if (!this.templates[target]) return null;
+    if (!this.print) return false;
+    return matchTemplate(this.print, target, this.templates, lenience);
+  }
+
+  // The learnt vowel the sound is clearly closest to, or null.
+  heardTemplate(lenience = 0.5) { return this.print ? nearestTemplate(this.print, this.templates, lenience) : null; }
+
+  // Distance to each learnt fingerprint (for the tune view).
+  templateDistances() {
+    const out = {};
+    for (const [v, t] of Object.entries(this.templates)) out[v] = this.print ? templateDistance(this.print, t) : null;
+    return out;
   }
 
   // A hum "mmm": a real voice (clear pitch) with nearly no energy above 600 Hz. limit: this child's
   // own limit from the voice check, if it learnt one.
   isHum(limit = this.humLimit) {
+    // "eee" also keeps most of its energy low (its first resonance is low), but it has a strong high
+    // second resonance; a hum has none: a sound with one above 1500 Hz is never a hum.
+    if (this.formants && this.formants.f2 > 1500) return false;
     return this.periodic && !this.hiss && this.humRatio != null && this.humRatio < (limit || HUM_RATIO);
   }
 
   // The strict test (vowel.js clearVowel): this vowel and no other.
   isClearVowel(target, lenience = 0.5) {
-    return clearVowel(this.vowelDist, target, lenience);
+    const m = this._templateMatch(target, lenience);
+    return m == null ? clearVowel(this.vowelDist, target, lenience) : m;
   }
 
   // Up, down or neither for Sky Glide.

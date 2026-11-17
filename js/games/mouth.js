@@ -29,17 +29,17 @@ import { clampScore } from "../kit/results.js";
 export const MOVES = {
   open: { key: "openWide", thr: 0.3, color: "#ff8fab", group: "small" },
   wide: { key: "openWider", thr: 0.5, color: "#ff5d8f", group: "big" },
-  smile: { key: "smile", thr: 0.32, color: "#ffd166", group: "small" },
+  smile: { key: "smile", thr: 0.24, color: "#ffd166", group: "small" },   // a natural smile (the mouth about 8-10% wider) is enough
   kiss: { key: "kiss", thr: 0.22, color: "#c77dff", group: "small" },
   oh: { key: "ohShape", thr: 0.24, color: "#9b5de5", group: "small" },
   puff: { key: "puff", thr: 0.2, color: "#4cc9f0", group: "small" },
   side: { key: "lipsSide", thr: 0.24, color: "#06d6a0", group: "small" },
   jaw: { key: "jawSide", thr: 0.22, color: "#f4a261", group: "big" },
   lipsIn: { key: "lipsIn", thr: 0.3, color: "#ef476f", group: "small" },
-  tongueOut: { key: "tongueDown", thr: 0.035, color: "#ff6b9a", group: "small", tongue: true },   // tongue down, out towards the chin
-  tongueUp: { key: "tongueUp", thr: 0.035, color: "#ff6b9a", group: "small", tongue: true },       // tongue up, towards the nose
-  tongueLeft: { key: "tongueLeft", thr: 0.035, color: "#ff85a1", group: "small", tongue: true },
-  tongueRight: { key: "tongueRight", thr: 0.035, color: "#ff85a1", group: "small", tongue: true },
+  tongueOut: { key: "tongueDown", thr: 0.018, color: "#ff6b9a", group: "small", tongue: true },   // tongue down, out towards the chin
+  tongueUp: { key: "tongueUp", thr: 0.018, color: "#ff6b9a", group: "small", tongue: true },       // tongue up, towards the nose
+  tongueLeft: { key: "tongueLeft", thr: 0.018, color: "#ff85a1", group: "small", tongue: true },
+  tongueRight: { key: "tongueRight", thr: 0.018, color: "#ff85a1", group: "small", tongue: true },
   tongueInOut: { key: "tongueInOut", cycle: ["tongueOut", null], color: "#ff4d8d", group: "small", tongue: true },
   tongueSides: { key: "tongueSides", cycle: ["tongueLeft", "tongueRight"], color: "#f72585", group: "small", tongue: true },
   chew: { key: "chew", cycle: ["open", null], color: "#fb8500", group: "big" },
@@ -138,6 +138,29 @@ let puffMemo = null;   // {signals: {name: change at the child's puff}, at}
 export function learntPuff() { return puffMemo && Date.now() - puffMemo.at < PUFF_REUSE_MS ? puffMemo.signals : null; }
 export function forgetPuff() { puffMemo = null; }
 export function rememberPuff(signals) { puffMemo = signals ? { signals, at: Date.now() } : null; }
+
+// ---------- tongue moves ----------
+// The tongue is found from colour (vision.js tongueShape), which differs a lot between faces, light
+// and cameras. So, like the puff, each tongue move is learnt the first time it comes: the child holds
+// it for a moment and the game keeps how far the colour signal moved (its 80th percentile). Then 60%
+// of the child's own move counts. A check that saw nothing keeps the textbook threshold.
+export const TONGUE_SIGNAL = { tongueOut: "tongueDown", tongueUp: "tongueUpR", tongueLeft: "tongueL", tongueRight: "tongueR" };
+const TONGUE_MIN = 0.008;
+let tongueMemo = {};   // {move: {gain, at}}; gain 0: checked, nothing learnt
+export function learntTongue(move) { const m = tongueMemo[move]; return m && Date.now() - m.at < PUFF_REUSE_MS ? m : null; }
+export function rememberTongue(move, gain) { tongueMemo[move] = { gain: gain || 0, at: Date.now() }; }
+export function forgetTongue() { tongueMemo = {}; }
+export function learnTongue(values) {
+  const v = values.filter((x) => typeof x === "number").sort((a, b) => a - b);
+  if (v.length < 8) return 0;
+  const p80 = v[Math.floor(v.length * 0.8)];
+  return p80 >= TONGUE_MIN ? p80 : 0;
+}
+// a tongue move's amount: scaled to the child's own move when it was learnt
+function tongueAmount(move, raw) {
+  const l = learntTongue(move);
+  return l && l.gain > 0 ? (raw / l.gain / PUFF_SHARE) * MOVES[move].thr : raw;
+}
 export function puffSignal(f, b, name, kind) {
   if (kind === "gain") return num(f[name]) - num(b[name]);
   return num(b[name]) > 0 && num(f[name]) > 0 ? f[name] / b[name] - 1 : 0;
@@ -157,7 +180,9 @@ export function learnPuff(frames) {
 export function puffAmount(f, b = {}, learnt = learntPuff()) {
   const open = Math.max(num(f.jawOpen) - num(b.jawOpen), (num(f.openR) - num(b.openR)) * 0.9);
   const wider = num(b.mouthW) > 0 && num(f.mouthW) > 0 ? f.mouthW / b.mouthW - 1 : 0;
-  if (open > 0.15 || wider > 0.1 || num(f.smile) - num(b.smile) > 0.25) return 0;
+  // a smile widens the cheeks too: a mouth more than 5% wider, or the face model's smile, is not a puff
+  // (puffed cheeks keep the lips closed and the mouth no wider)
+  if (open > 0.15 || wider > 0.05 || num(f.smile) - num(b.smile) > 0.15) return 0;
   // learnt signals only: a puff check that learnt nothing ({none: 1}) uses the textbook mix below
   const own = learnt ? PUFF_SIGNALS.filter(([name]) => learnt[name] > 0) : [];
   if (own.length) {
@@ -198,14 +223,14 @@ export function moveAmount(move, f, b = {}) {
       return Math.max(gain(f, b, "lipsIn"), num(b.lipThick) ? (1 - num(f.lipThick) / b.lipThick) * 1.4 : 0);
     case "tongueOut": // the lips must be a little apart for a tongue to come out
       if (Math.max(gain(f, b, "jawOpen"), gain(f, b, "openR")) < 0.02) return 0;
-      return gain(f, b, "tongueDown");
+      return tongueAmount("tongueOut", gain(f, b, "tongueDown"));
     case "tongueUp":
       if (Math.max(gain(f, b, "jawOpen"), gain(f, b, "openR")) < 0.02) return 0;
-      return gain(f, b, "tongueUpR");
+      return tongueAmount("tongueUp", gain(f, b, "tongueUpR"));
     case "tongueLeft":
-      return gain(f, b, "tongueL");
+      return tongueAmount("tongueLeft", gain(f, b, "tongueL"));
     case "tongueRight":
-      return gain(f, b, "tongueR");
+      return tongueAmount("tongueRight", gain(f, b, "tongueR"));
     case "headLeft":
       return Math.max(0, -gain(f, b, "yaw"));
     case "headRight":
@@ -455,6 +480,7 @@ const def = {
       if (ctx.mode === "touch") controls.push({ id: "notyet", kind: "tap", label: ctx.t("notYet"), onTap: () => { if (g.state === "cue") finishRep(false, "adult_not_yet"); } });
       controls.push({ id: "skip", kind: "tap", label: ctx.t("skip"), onTap: () => {
         if (g.state === "puffcheck") { rememberPuff({ none: 1 }); ctx.event("puff_check", { skipped: true }); g.state = "cue"; g.stateT = 0; g.hold = 0; ctx.say(MOVES[seq[g.i]].key); return; }
+        if (g.state === "tonguecheck") { rememberTongue(g.checkMove, 0); ctx.event("tongue_check", { move: g.checkMove, skipped: true }); g.state = "cue"; g.stateT = 0; g.hold = 0; ctx.say(MOVES[seq[g.i]].key); return; }
         if (g.state === "cue") finishRep(false, "skipped");
       } });
       ctx.setControls(controls);
@@ -493,6 +519,9 @@ const def = {
     const needPuffCheck = (move) => move === "puff" && ctx.mode === "sensors" && ctx.tracker && !learntPuff();
     const sayCue = () => {
       if (needPuffCheck(seq[g.i])) { g.state = "puffcheck"; g.stateT = 0; g.puffFrames = []; ctx.say("puffCheck"); return; }
+      // a tongue move (or the tongue part of a back-and-forth move) not learnt yet: learn it first
+      const tm = TONGUE_SIGNAL[seq[g.i]] ? seq[g.i] : seq[g.i] === "tongueInOut" ? "tongueOut" : seq[g.i] === "tongueSides" ? ["tongueLeft", "tongueRight"].find((x) => !learntTongue(x)) || null : null;
+      if (tm && ctx.mode === "sensors" && ctx.tracker && !learntTongue(tm)) { g.state = "tonguecheck"; g.stateT = 0; g.checkMove = tm; g.tongueVals = []; ctx.say(MOVES[tm].key); return; }
       ctx.say(MOVES[seq[g.i]].key);
     };
     g.start = () => sayCue();
@@ -541,6 +570,24 @@ const def = {
       g.stateT += dt;
       g.pop = Math.max(0, g.pop - dt * 2);
       const move = seq[g.i];
+      if (g.state === "tonguecheck") {
+        // a grown-up tapped Done: they saw the move, so it counts (the check is left for another time)
+        if (g.therapistTap) { g.state = "cue"; g.stateT = 0; return; }
+        const f = ctx.tracker && ctx.tracker.face, b = ctx.faceBase;
+        if (!f || !f.present || (ctx.mic && ctx.mic.selfSound)) { g.stateT -= dt; return; }
+        const sig = TONGUE_SIGNAL[g.checkMove];
+        if (g.stateT > 0.8) g.tongueVals.push(num(f[sig]) - num(b[sig]));
+        g.mouth = { ...g.mouth, ...demo(g.checkMove, g.stateT) };
+        if (g.stateT > PUFF_CHECK_SEC) {
+          const gainL = learnTongue(g.tongueVals);
+          rememberTongue(g.checkMove, gainL);
+          ctx.event("tongue_check", { move: g.checkMove, learnt: gainL > 0, gain: Math.round(gainL * 1000) / 1000, frames: g.tongueVals.length });
+          ctx.sfx.success();
+          g.state = "cue"; g.stateT = 0; g.hold = 0; g.active = false; g.offT = 0;
+          sayCue();   // the next tongue part to learn (side to side has two), or the move itself
+        }
+        return;
+      }
       if (g.state === "puffcheck") {
         const f = ctx.tracker && ctx.tracker.face, b = ctx.faceBase;
         if (!f || !f.present || (ctx.mic && ctx.mic.selfSound)) { g.stateT -= dt; return; }
@@ -654,6 +701,13 @@ const def = {
         c.beginPath(); c.arc(640 - (seq.length - 1) * 16 + k * 32, 680, 10, 0, Math.PI * 2); c.fill();
       }
       if (ctx.mode === "sensors" && ctx.tracker && !ctx.tracker.face.present) label(c, ctx.t("moveCloser"), W / 2, 60, { size: 30 });
+      if (g.state === "tonguecheck") {
+        c.save(); c.fillStyle = "rgba(7,59,76,0.55)"; c.fillRect(0, 0, W, H); c.restore();
+        label(c, ctx.t(MOVES[g.checkMove].key), W / 2, 230, { size: 46, weight: 800 });
+        label(c, ctx.t("tongueCheckNote"), W / 2, 290, { size: 26, weight: 500, color: "#cdeff9" });
+        ring(c, W / 2, 420, 60, clamp(g.stateT / PUFF_CHECK_SEC, 0, 1), { color: "#ff6b9a", width: 14, track: "rgba(255,255,255,0.3)" });
+        drawCueIcon(c, W / 2, 420, g.checkMove, ctx.anim);
+      }
       if (g.state === "puffcheck") {
         c.save(); c.fillStyle = "rgba(7,59,76,0.55)"; c.fillRect(0, 0, W, H); c.restore();
         label(c, ctx.t("puffCheck"), W / 2, 230, { size: 48, weight: 800 });

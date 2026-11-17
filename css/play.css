@@ -209,14 +209,22 @@ button { font: inherit; color: inherit; }
 }
 
 /* ---------- game view ---------- */
-.game-view { position: fixed; inset: 0; background: var(--stage); color: var(--stage-ink); display: grid; grid-template-rows: auto 1fr auto; z-index: 5;
+/* minmax(0, 1fr): the column is exactly the screen's width, so a wide top bar on a narrow phone can
+   never stretch the game picture off the screen */
+.game-view { position: fixed; inset: 0; background: var(--stage); color: var(--stage-ink); display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr); z-index: 5;
   padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
 .hud { display: flex; align-items: center; gap: 12px; padding: 8px max(12px, env(safe-area-inset-right, 0px)) 8px max(12px, env(safe-area-inset-left, 0px)); }
 .hud-btn { width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(255,255,255,.12); color: var(--stage-ink); font-size: 16px; cursor: pointer; flex: none; }
 .hud-title { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .hud-title strong { font-family: var(--display); font-size: 22px; line-height: 1.1; }
 .hud-title span { font-size: 13px; opacity: .8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hud-stats { display: flex; gap: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.hud-stats { display: flex; gap: 14px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 480px) {
+  .hud { gap: 8px; }
+  .hud-btn { width: 40px; height: 40px; }
+  .hud-title strong { font-size: 17px; }
+  .hud-stats { gap: 2px 10px; font-size: 14px; }
+}
 .stage { position: relative; display: grid; place-items: center; min-height: 0; overflow: hidden; }
 .stage > canvas#stageCanvas { display: block; border-radius: 16px; touch-action: none; box-shadow: 0 20px 60px -20px rgba(0,0,0,.6); }
 .cam { position: absolute; top: 12px; right: max(12px, env(safe-area-inset-right, 0px)); width: 160px; height: 120px; border-radius: 14px; border: 3px solid rgba(255,255,255,.75); background: #000; }
@@ -309,10 +317,15 @@ button { font: inherit; color: inherit; }
 /* rotate prompt: phones held upright during a game */
 .rotate { display: none; }
 @media (orientation: portrait) and (max-width: 700px) {
-  .game-view:not(.rotate-ok) .rotate { display: grid; position: absolute; inset: 0; z-index: 8; place-content: center; justify-items: center; gap: 16px; text-align: center; background: rgba(15,18,48,.94); padding: 24px; font-size: 20px; font-weight: 700; }
+  /* A hint, not a wall: games play upright too (just smaller). It sits at the top, never blocks a
+     tap, and fades away by itself; tapping it hides it at once. */
+  .game-view:not(.rotate-ok) .rotate { display: flex; position: absolute; top: 72px; left: 12px; right: 12px; z-index: 8; align-items: center; justify-content: center; gap: 12px; text-align: center; background: rgba(15,18,48,.9); padding: 10px 14px; border-radius: 16px; font-size: 15px; font-weight: 700; animation: rotateHint 6s ease-in forwards; pointer-events: none; }
+  .game-view:not(.rotate-ok) .rotate .rotate-phone { width: 22px; height: 36px; border-width: 3px; border-radius: 6px; flex: none; }
+  .game-view:not(.rotate-ok) .rotate #rotateDismiss { pointer-events: auto; padding: 6px 14px; font-size: 14px; }
 }
 .rotate-phone { width: 56px; height: 92px; border: 5px solid #fff; border-radius: 12px; animation: turn 2.2s ease-in-out infinite; }
 @keyframes turn { 40%, 60% { transform: rotate(-90deg); } }
+@keyframes rotateHint { 0%, 80% { opacity: 1; } 100% { opacity: 0; visibility: hidden; } }
 
 /* ---------- sheets and dialogs ---------- */
 dialog { border: 0; padding: 0; color: var(--ink); background: var(--surface); }

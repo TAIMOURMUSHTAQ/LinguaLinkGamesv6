@@ -1,5 +1,55 @@
 # Changelog
 
+## 6.3.0 (2026-11-18)
+
+### Vowel recognition (Balloon Breeze, Sky Glide)
+- **Vowel fingerprints** (`js/kit/vowelprint.js`): each vowel is recognised from the whole shape of its
+  sound (24 hearing-scale bands → 12 numbers, loudness ignored), learnt from the child's own A, E and O
+  the first time each is held. Picking the two resonances failed when they merge (a man's "aaa" read
+  as 525/2800 Hz) or behind a cheap microphone. In synthetic tests (man, man with close A/O, woman,
+  child; clean and cheap microphone) A, E and O were recognised 100% at the easiest and the strictest
+  setting and never confused; "eee" was never accepted. Known limit: "uuu" is close to O and is
+  accepted as O on the first levels (rejected on most voices on the last levels).
+- A fingerprint too like another vowel already learnt is refused (the child said the same sound
+  twice), and learnt again on a later round. Vowels without a fingerprint still use the resonances.
+- Sky Glide learns a vowel from any held voiced sound while its ring is next (not a hum, a hiss or
+  another learnt vowel), instead of waiting until the resonance test already agreed.
+- Microphone: the room level no longer creeps up into a held voice; a steady pitch counts as voice
+  even just under the loudness bar. "eee" is never taken for a hum (a high second resonance), and a
+  vowel is checked before the hum. A learnt resonance can only make a vowel closer, never further.
+- `?tune=1` voice panel shows the distance to each learnt fingerprint.
+
+### Fish Feast thresholds
+- Smile, tongue (0.018) and puff thresholds lowered after on-device readings; a smile or a wide mouth
+  no longer counts as a puff.
+
+### Balloon Breeze
+- No voice check screen at the start. Each round shows a big prompt and **says** its sound ("Say A,
+  aaa"), also when spoken instructions are off. The game learns the child's own A, E and O the first
+  time each is held, with a forgiving test meanwhile, so the balloon fills from the first try.
+- Fewer things can block a real voice: a clear pitch is enough (the stricter "steady pitch" and the
+  hum test no longer gate it; the strict vowel test still rejects other sounds).
+
+### Fish Feast
+- **Tongue check**: each tongue move (down, up, left, right) is learnt the first time it comes, like the
+  puff; then 60% of the child's own move counts. A grown-up's Done during the check counts the move.
+
+### Word Garden
+- Words follow the **word list's own order**: the game's mix goes /p/, /b/, /t/, /d/ ... one word each;
+  a chosen sound gives its words in list order. Each play continues where the last one stopped.
+- Urdu letters are shown with their sound: م (ما), س (سا).
+- `scripts/make-wordlist.py` regenerates `js/kit/wordlist.js` from LinguaLink360's seeders.
+
+### Phones
+- The screen no longer flickers: the game picture is only resized when its size really changes, and is
+  drawn again at once.
+- Games play upright too: "turn sideways" is a small hint that fades, not a full-screen block.
+- Sharper picture on phones (2 pixels per point; slow devices still drop to 1).
+
+### Checking on a real device
+- `?tune=1` now also shows a live **voice panel** in every microphone game: room level, how loud the
+  voice is above it, voice and pitch detected, the vowel heard and its distance to A, E, O, I and U.
+
 ## 6.2.0 (2026-11-17)
 
 Vowels at phoneme level in Balloon Breeze, a sound mix in Sky Glide, new Fish Feast moves with a puff

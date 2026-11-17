@@ -5,6 +5,7 @@
 // (two resonances per vowel) are kept, in memory.
 import { W, H, label, ring, rr, clamp } from "./draw.js";
 import { makeVowelAnchors, learnHumLimit } from "./vowel.js";
+import { makeTemplate, templateGap, MIN_TEMPLATE_GAP } from "./vowelprint.js";
 
 export const CHECK_ORDER = ["aah", "ehh", "ooo"];
 export const VOWEL_LETTER = { aah: "A", ehh: "E", eee: "I", ooo: "O", uuu: "U", mmm: "M", sss: "S" };
@@ -19,8 +20,22 @@ let lastVowelHum = null;  // {ratios, at}: the hum feature of the child's vowels
 export function savedVowels() { return last && Date.now() - last.at < REUSE_MS ? last.anchors : null; }
 export function savedHum() { return lastHum && Date.now() - lastHum.at < REUSE_MS ? lastHum.limit : null; }
 export function humChecked() { return !!(lastHum && Date.now() - lastHum.at < REUSE_MS); }
-export function forgetVowels() { last = null; lastHum = null; lastVowelHum = null; }
+export function forgetVowels() { last = null; lastHum = null; lastVowelHum = null; lastPrints = null; }
 export function rememberVowels(anchors) { last = anchors ? { anchors, at: Date.now() } : null; }
+// The child's own vowel fingerprints (vowelprint.js), kept in memory for the visit like the anchors.
+let lastPrints = null;    // {templates, at}
+export function savedPrints() { return lastPrints && Date.now() - lastPrints.at < REUSE_MS ? lastPrints.templates : null; }
+export function rememberPrints(templates) { lastPrints = templates && Object.keys(templates).length ? { templates: { ...templates }, at: Date.now() } : null; }
+
+// Learn the fingerprint of the vowel just held (frames: single-frame prints collected while it was held).
+// Refused (null) when it is too close to another vowel already learnt: the child probably said that
+// one again, and learning it would make the two impossible to tell apart.
+export function learnPrint(vowel, frames, templates) {
+  const tpl = makeTemplate(frames, 8);
+  if (!tpl) return null;
+  for (const [v, other] of Object.entries(templates || {})) if (v !== vowel && other && templateGap(tpl, other) < MIN_TEMPLATE_GAP) return null;
+  return tpl;
+}
 export function rememberHum(limit) { lastHum = { limit: limit || null, at: Date.now() }; }
 
 // A small state machine the game runs before play. onDone(anchors or null) when finished.

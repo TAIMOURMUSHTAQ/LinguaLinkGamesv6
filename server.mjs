@@ -115,6 +115,16 @@ const server = createServer(async (req, res) => {
   }
 });
 
+// Port taken: most often the games are already running in another window. Say so plainly.
+server.on("error", (e) => {
+  if (e && e.code === "EADDRINUSE") {
+    console.log(`Port ${PORT} is already in use: LinguaLink Play is probably already running.`);
+    console.log(`Open http://localhost:${PORT} in the browser, or start another copy with a different port:`);
+    console.log(process.platform === "win32" ? `  $env:PORT=8081; npm start` : `  PORT=8081 npm start`);
+    process.exit(1);
+  }
+  throw e;
+});
 server.listen(PORT, HOST, () => {
   console.log(`LinguaLink Play is running at http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
   warmPacked().then(() => console.log("Camera files ready (compressed)"));

@@ -218,7 +218,7 @@ test("Sky Glide: each sound flies to its own height, silence glides straight; St
   const level = { ...glide.LEVELS[0] };
   const ctx = makeCtx(glide.default, { mode: "sensors", mic, variant: "fly", level });
   const g = glide.default.create(ctx);
-  assert.equal(g.phase, "check", "the voice check comes first");
+  assert.equal(g.phase, "play", "no voice check screen: straight into play (v6.3)");
   g.phase = "play";
   const run = (sec) => { for (let i = 0; i < sec * 20; i++) g.update(0.05); };
   run(0.5);

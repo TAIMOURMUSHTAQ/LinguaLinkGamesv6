@@ -219,3 +219,114 @@ test("Balance Tray: one hand holds the tray, and fallen fruit is replaced while 
   tracker.hands = []; run(1.5);
   assert.ok(g.items.some((it) => !it.off), "a new fruit is on the tray while the game waits for the hands");
 });
+
+test("Balloon Breeze (v6.3): no voice check screen; each round prompts its sound and learns the child's vowel", async () => {
+  const breeze = (await import("../js/games/breeze.js")).default;
+  const { forgetVowels } = await import("../js/kit/vowelcheck.js");
+  forgetVowels();
+  const mic = { voiced: false, speech: false, periodic: false, hiss: false, selfSound: false, level01: 0, rise: 0, vowel: null, formants: null, personal: null, _want: null,
+    isVowel(v) { return this._want === v; }, isClearVowel(v) { return this._want === v; }, setAnchors(a) { this.personal = a; } };
+  const ctx = makeCtx(breeze, { mode: "sensors", mic, level: breeze.levels[0] });
+  const g = breeze.create(ctx);
+  assert.equal(g.phase, "play", "straight into play, no check screen");
+  g.start();
+  assert.equal(g.sound, "aah"); assert.ok(g.learn, "A is learnt during its first round");
+  const run = (sec) => { for (let i = 0; i < sec * 20; i++) g.update(0.05); };
+  run(2.4);   // the prompt
+  Object.assign(mic, { voiced: true, periodic: true, _want: "aah", vowel: "aah", formants: { f1: 1000, f2: 1400 } });
+  run(2);
+  assert.ok(mic.personal && mic.personal.aah, "the child's own A is learnt");
+  assert.ok(g.progress > 0.2, `and the balloon fills meanwhile: ${g.progress}`);
+  forgetVowels();
+});
+
+test("Fish Feast (v6.3): a tongue move is learnt first, then 60% of the child's own move counts", async () => {
+  const mouth = await import("../js/games/mouth.js");
+  mouth.forgetTongue();
+  const base = { jawOpen: 0.02, openR: 0.02, mouthW: 0.4, tongueDown: 0 };
+  const tracker = { face: { present: true, ...base } };
+  const ctx = makeCtx(mouth.default, { mode: "sensors", tracker, faceBase: base, level: { ...mouth.LEVELS[0], seq: ["tongueOut"], reps: 1 } });
+  const g = mouth.default.create(ctx);
+  g.start();
+  assert.equal(g.state, "tonguecheck");
+  const run = (sec) => { for (let i = 0; i < sec * 20; i++) g.update(0.05); };
+  tracker.face = { present: true, ...base, openR: 0.06, tongueDown: 0.02 }; run(4);
+  assert.equal(g.state, "cue");
+  assert.ok(Math.abs(mouth.learntTongue("tongueOut").gain - 0.02) < 0.002);
+  assert.ok(mouth.moveActive("tongueOut", { ...base, openR: 0.06, tongueDown: 0.014 }, base), "70% of the child's own move counts");
+  assert.ok(!mouth.moveActive("tongueOut", { ...base, openR: 0.06, tongueDown: 0.006 }, base), "30% does not");
+  mouth.forgetTongue();
+});
+
+test("Word Garden (v6.3): the word list's own order, and Urdu letters with their sound", async () => {
+  const { gardenItems, urduLetterSound } = await import("../js/kit/wordgarden.js");
+  const { WORDS_EN, SOUNDS_EN } = await import("../js/kit/wordlist.js");
+  const mix = gardenItems({ levelIndex: 0 });
+  assert.deepEqual(mix.slice(0, 4).map((i) => i.sound), SOUNDS_EN.slice(0, 4).map((s) => s.id), "sounds in the list's order");
+  assert.deepEqual(mix.slice(0, 2).map((i) => i.plain), [WORDS_EN.p.initial[0], WORDS_EN.b.initial[0]]);
+  const s = gardenItems({ sound: "s", levelIndex: 0 });
+  assert.deepEqual(s.map((i) => i.plain), WORDS_EN.s.initial.slice(0, 8), "a chosen sound's words in the list's order");
+  const next = gardenItems({ sound: "s", levelIndex: 0, play: 1 });
+  assert.equal(next[0].plain, WORDS_EN.s.initial[8], "the next play continues where the last stopped");
+  assert.equal(urduLetterSound("م"), "ما");
+  assert.equal(urduLetterSound("س"), "سا");
+});
+
+// Vowel fingerprints (vowelprint.js): a power spectrum built from harmonics of the voice, shaped by
+// the vowel's resonances (fast: no FFT needed).
+const VP = await import("../js/kit/vowelprint.js");
+const { learnPrint } = await import("../js/kit/vowelcheck.js");
+function vowelSpectrum(f0, formants, { gain = 1, tilt = 0, seed = 1 } = {}) {
+  const binHz = 48000 / 2048, out = new Float64Array(384);
+  let s = seed; const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  const bws = [80, 100, 140, 200];
+  for (let h = f0; h < 9000; h += f0) {
+    let a = 1 / (1 + h / 500);                       // the voice's natural roll-off
+    formants.forEach((F, j) => { const bw = bws[j]; a *= (F / bw) / Math.sqrt(((h * h - F * F) / (F * bw)) ** 2 + 1); });   // each resonance: gain 1 far below it, F/bw at its peak
+    a *= Math.pow(h / 1000, tilt);                   // a microphone that favours lows or highs
+    const k = Math.round(h / binHz); if (k > 0 && k < out.length) out[k] += a * a * gain * (0.8 + 0.4 * rnd());
+  }
+  for (let k = 0; k < out.length; k++) out[k] += 1e-12;
+  return { power: out, binHz };
+}
+const MAN = { aah: [650, 980, 2500, 3400], ehh: [520, 1800, 2500, 3400], ooo: [480, 800, 2500, 3400], eee: [280, 2250, 3000, 3600] };
+const framesFor = (f0, F, opt = {}) => Array.from({ length: 12 }, (_, i) => { const { power, binHz } = vowelSpectrum(f0 * (1 + 0.01 * Math.sin(i)), F, { ...opt, seed: i + 1 + (opt.seed || 0) }); return VP.fingerprint(power, binHz); });
+
+test("Vowel fingerprints: a man's A, E and O (close resonances) are told apart; loudness and pitch do not matter", () => {
+  const tpl = {};
+  for (const v of ["aah", "ehh", "ooo"]) tpl[v] = learnPrint(v, framesFor(112, MAN[v]), tpl);
+  for (const v of ["aah", "ehh", "ooo"]) assert.ok(tpl[v], `${v} learnt`);
+  for (const v of ["aah", "ehh", "ooo"]) {
+    // a second take: another pitch, much softer, through a microphone with less treble
+    const take = VP.meanPrint(framesFor(120, MAN[v], { gain: 0.05, tilt: -0.3, seed: 50 }).slice(0, 3));
+    for (const t of ["aah", "ehh", "ooo"]) assert.equal(VP.matchTemplate(take, t, tpl, 0.25), t === v, `said ${v}, asked ${t}`);
+    assert.equal(VP.nearestTemplate(take, tpl, 0.5), v);
+  }
+  // "eee" is none of them
+  const eee = VP.meanPrint(framesFor(112, MAN.eee).slice(0, 3));
+  for (const t of ["aah", "ehh", "ooo"]) assert.equal(VP.matchTemplate(eee, t, tpl, 1), false, `eee is not ${t}`);
+  // no template yet: the caller falls back to the resonance test
+  assert.equal(VP.matchTemplate(eee, "uuu", tpl, 1), null);
+  assert.equal(VP.fingerprint(new Float64Array(384), 48000 / 2048), null, "silence has no fingerprint");
+});
+
+test("Vowel fingerprints: the same sound said for two vowels is refused, so they stay apart", () => {
+  const a = learnPrint("aah", framesFor(112, MAN.aah), {});
+  assert.ok(a);
+  assert.equal(learnPrint("ehh", framesFor(118, MAN.aah, { seed: 9 }), { aah: a }), null, "an A held when E was asked is not learnt as E");
+  assert.equal(learnPrint("ehh", framesFor(112, MAN.ehh).slice(0, 4), { aah: a }), null, "too short a hold is not learnt");
+});
+
+test("Mic: a learnt fingerprint decides; without one the resonance test still does", async () => {
+  const { Mic } = await import("../js/kit/mic.js");
+  const m = new Mic({ vowels: true });
+  m.vowelDist = { aah: 9, ehh: 0.2, ooo: 9, eee: 9, uuu: 9 };       // the resonances say E...
+  const tpl = { aah: learnPrint("aah", framesFor(112, MAN.aah), {}) };
+  m.print = VP.meanPrint(framesFor(112, MAN.aah, { seed: 3 }).slice(0, 3));   // ...but the sound is the child's A
+  assert.equal(m.isClearVowel("aah", 0.25), false, "no fingerprint yet: resonances decide");
+  m.setTemplates(tpl);
+  assert.equal(m.isClearVowel("aah", 0.25), true, "the child's own A is heard as A");
+  assert.equal(m.isClearVowel("ehh", 0.25), true, "E has no fingerprint yet, so the resonance test still decides");
+  m.print = null;
+  assert.equal(m.isClearVowel("aah", 1), false, "no sound, no A");
+});

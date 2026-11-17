@@ -53,13 +53,16 @@ export function vowelDistances(f1, f2, type = 1, known = true, personal = null) 
   // no pitch reading (a whisper, a creaky voice): any voice type may be the right one
   const spread = known ? [-0.4, 0, 0.4] : [-1, -0.5, 0, 0.5, 1];
   for (const v of VOWELS) {
-    const own = personal && personal[v];
-    if (own) { out[v] = personalDistance([f1, f2], own); continue; }
     let best = Infinity;
     for (const dt of spread) {
       const ty = Math.max(0, Math.min(2, type + dt));
       best = Math.min(best, formantDistance([f1, f2], reference(v, ty)) + (known ? Math.abs(dt) * 0.5 : 0));
     }
+    const own = personal && personal[v];
+    // A vowel learnt from the child can only help: the closer of the child's own sound and the
+    // textbook sound counts. (Measured: a man's "ooo" at 475/1000 Hz was 0.6 from the textbook O but
+    // 3.3 from a badly learnt one, so it was taken for U.)
+    if (own) { out[v] = Math.min(personalDistance([f1, f2], own), best + 0.3); continue; }
     // with a personal check, a vowel the child did not make in it is a little less likely
     out[v] = personal ? best + 0.5 : best;
   }
@@ -122,6 +125,28 @@ export function makeVowelAnchors(samples, minSamples = 5) {
 const ANCHOR_REACH = 4.5;    // textbook distance beyond which a learned vowel is not believed
 const ANCHOR_MARGIN = 2.5;   // ... or when another vowel is this much closer
 const ANCHOR_MIN_GAP = 1.0;  // two learned vowels closer than this are one sound said twice
+
+// Learn one vowel during play (Balloon Breeze learns each vowel the first time the child holds it,
+// instead of a voice check at the start). samples: [[f1, f2], ...] while the child held the sound.
+// others: vowels already learnt ({vowel: anchor}). Returns the anchor, or null when the sound is not
+// believable as that vowel (far from it, or the same as another learnt vowel): then the textbook
+// values stay in use.
+export function learnVowel(v, samples, others = {}) {
+  if (!samples || samples.length < 8) return null;
+  const made = makeVowelAnchors({ [v]: samples, ...Object.fromEntries(Object.entries(others || {}).filter(([k]) => k !== v).map(([k, a]) => [k, Array.from({ length: 8 }, () => [a.f1, a.f2])])) });
+  return made && made[v] ? made[v] : (() => {
+    // makeVowelAnchors needs two vowels; alone, check this one against the textbook values directly
+    const one = makeVowelAnchors({ [v]: samples, _: [] }, 5);
+    if (one && one[v]) return one[v];
+    const l1 = samples.map((x) => Math.log(x[0])).sort((a, b) => a - b), l2 = samples.map((x) => Math.log(x[1])).sort((a, b) => a - b);
+    const med = (a) => a[a.length >> 1], iqr = (a) => (a[Math.floor(a.length * 0.75)] - a[Math.floor(a.length * 0.25)]) / 1.35;
+    const a = { f1: Math.exp(med(l1)), f2: Math.exp(med(l2)), s1: Math.min(0.3, Math.max(0.13, iqr(l1) * 1.6)), s2: Math.min(0.34, Math.max(0.15, iqr(l2) * 1.6)), n: samples.length };
+    const d = vowelDistances(a.f1, a.f2, 1, false);
+    if (d[v] > ANCHOR_REACH || d[v] > nearestVowel(d).distance + ANCHOR_MARGIN) return null;
+    for (const o of Object.values(others || {})) if (o && (personalDistance([o.f1, o.f2], a) + personalDistance([a.f1, a.f2], o)) / 2 < ANCHOR_MIN_GAP) return null;
+    return a;
+  })();
+}
 
 // Sky Glide: each vowel has its own height, from the back of the mouth to the front (the order of
 // the second formant): U "uuu" lowest, then O "ooo", A "aaa", E "ehh", and I "eee" at the top.
