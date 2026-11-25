@@ -1,5 +1,32 @@
 # Changelog
 
+## 6.4.0 (2026-11-25)
+
+### Vowel recognition (Balloon Breeze, Sky Glide)
+- **New vowel fingerprint**: the cepstrum of the spectrum's envelope by linear prediction (LPCC), with
+  a 250 Hz smoothing window and a 40 dB floor. The 6.3 fingerprint (24 hearing-scale bands) moved with
+  the voice's pitch: for a man's low voice a slightly higher "aaa" looked like his "ooo", which is
+  what failed on real devices.
+- **New lifelike browser test** `tests/e2e/realvoice.mjs`: natural voice source (jitter, shimmer,
+  vibrato, breath), room echo, 50 Hz mains hum, fan noise and a cheap microphone, through Chrome's
+  fake microphone and the real Mic class. Each vowel is learnt from its first hold, then a second
+  hold at another pitch and loudness is judged.
+
+| Lifelike test, man's voice | 6.3 | 6.4 |
+| --- | --- | --- |
+| "aaa" recognised (first levels) | 13% | 100% |
+| "aaa" taken for O | 47% | 0% |
+| "eee", "mmm" taken for A, E or O | 88–100% | 0% |
+
+- **Fixed (6.3 regression):** Sky Glide learnt a vowel from any held sound while its ring was next,
+  so a child who kept saying "aaa" had it learnt as O. A sound whose resonances clearly say it is
+  another vowel is now never learnt (Balloon Breeze too); only O and U are not held against each
+  other, as an O read as U is the reading that misleads on real devices.
+- Browser tests: `realvoice.mjs` 43/44, `voice.mjs` 29/30 (the one miss is the test's own timing: the
+  room check finished after its sampling window). Unit tests 92/92.
+- Known limit: for a high child's voice, U and O are acoustically almost the same, so "uuu" counts
+  as O on the first levels; the child's O on the strictest level is recognised about half the time.
+
 ## 6.3.0 (2026-11-18)
 
 ### Vowel recognition (Balloon Breeze, Sky Glide)

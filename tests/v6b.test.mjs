@@ -330,3 +330,17 @@ test("Mic: a learnt fingerprint decides; without one the resonance test still do
   m.print = null;
   assert.equal(m.isClearVowel("aah", 1), false, "no sound, no A");
 });
+
+test("Mic: a sound the resonances clearly call another vowel is not learnt (O and U excepted)", async () => {
+  const { Mic } = await import("../js/kit/mic.js");
+  const m = new Mic({ vowels: true });
+  m.vowelDist = { aah: 0.2, ehh: 9, ooo: 9, eee: 9, uuu: 9 };       // a clear "aaa"
+  assert.equal(m.clearlyOtherThan("ooo"), true, "a clear aaa is not learnt as O");
+  assert.equal(m.clearlyOtherThan("aah"), false, "...but is learnt as A");
+  m.vowelDist = { aah: 9, ehh: 9, ooo: 9, eee: 0.2, uuu: 9 };       // a clear "eee"
+  assert.equal(m.clearlyOtherThan("ehh"), true, "eee is not learnt as E");
+  m.vowelDist = { aah: 9, ehh: 9, ooo: 9, eee: 9, uuu: 0.2 };       // an O read as U on a real device
+  assert.equal(m.clearlyOtherThan("ooo"), false, "an O that reads as U can still be learnt as O");
+  m.vowelDist = null;
+  assert.equal(m.clearlyOtherThan("ooo"), false, "no reading: no objection");
+});

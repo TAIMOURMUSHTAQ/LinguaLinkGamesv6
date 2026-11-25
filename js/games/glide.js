@@ -244,7 +244,7 @@ const def = {
       // (any steady voiced sound counts, as the ring asks for this vowel; not a hum, a hiss, or a sound
       // that is clearly another vowel already learnt, such as the previous ring's still being held)
       if (sensors && nx && GLIDE_VOWELS.includes(nx.v) && !(mic.templates || mic.personal || {})[nx.v] && hearing() && mic.periodic && !mic.hiss && (mic.lastPrint || mic.formants)
-          && !(mic.isHum && mic.isHum()) && !GLIDE_VOWELS.some((o) => o !== nx.v && (mic.templates || {})[o] && mic.isClearVowel(o, 0.5))) {
+          && !(mic.isHum && mic.isHum()) && !(mic.clearlyOtherThan && mic.clearlyOtherThan(nx.v)) && !GLIDE_VOWELS.some((o) => o !== nx.v && (mic.templates || {})[o] && mic.isClearVowel(o, 0.5))) {
         const l = (g.learn[nx.v] ||= { samples: [], prints: [], last: null, voiceT: 0 });
         l.voiceT += dt;
         if (mic.formants) l.samples.push([mic.formants.f1, mic.formants.f2]);

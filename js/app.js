@@ -10,7 +10,7 @@ import { describe, perRound, formatDuration, progressByLevel } from "./kit/repor
 import { preload, onLoadProgress, isLoaded, warmEngine } from "./kit/vision.js";
 import { W, H } from "./kit/draw.js";
 
-const VERSION = "6.3.0";
+const VERSION = "6.4.0";
 const cfg = getConfig();
 let runner = null;
 let GAMES = [], byId = {};

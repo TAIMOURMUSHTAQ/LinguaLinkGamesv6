@@ -389,6 +389,16 @@ export class Mic {
     return matchTemplate(this.print, target, this.templates, lenience);
   }
 
+  // Before a vowel is learnt from a sound: do the resonances clearly say it is another vowel? (Then it
+  // is not learnt, so a child who keeps saying "aaa" when asked for O does not get "aaa" learnt as O.)
+  // O and U are not held against each other: on real devices that is the reading that misleads (an O
+  // read as U), and the fingerprint keeps them apart once learnt.
+  clearlyOtherThan(target) {
+    if (!this.vowelDist) return false;
+    const near = { ooo: "uuu", uuu: "ooo" }[target];
+    return VOWELS.some((v) => v !== target && v !== near && clearVowel(this.vowelDist, v, 0.25));
+  }
+
   // The learnt vowel the sound is clearly closest to, or null.
   heardTemplate(lenience = 0.5) { return this.print ? nearestTemplate(this.print, this.templates, lenience) : null; }
 

@@ -236,7 +236,7 @@ const def = {
         if (heard) g.speechFrames++;
         // Learning this vowel (its first round): the child's own sound is collected for a moment, with a
         // forgiving test meanwhile, then the strict test uses the child's own vowel.
-        if (g.learn && heard && (mic.formants || mic.lastPrint)) {
+        if (g.learn && heard && (mic.formants || mic.lastPrint) && !(mic.clearlyOtherThan && mic.clearlyOtherThan(g.learn.sound))) {
           g.learn.voiceT += dt;
           if (mic.formants) g.learn.samples.push([mic.formants.f1, mic.formants.f2]);
           // one fingerprint per analysis frame (the mic analyses about 20 times a second)
