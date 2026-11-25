@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>LinguaLink Play Voice Recorder (internal)</title>
+<style>
+  :root { --ink:#16233A; --muted:#55657A; --brand:#157A6D; --line:#D6E1DD; --bg:#F3F6F4; --card:#FBFCFB; --warn:#B3261E; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: var(--bg); color: var(--ink); line-height: 1.5; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px max(16px, env(safe-area-inset-left, 0px)); }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.15rem; margin: 0 0 10px; }
+  .muted { color: var(--muted); } .warn { color: var(--warn); }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 14px 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  label { display: block; font-size: .9rem; font-weight: 600; } input, select { width: 100%; padding: 8px; margin-top: 4px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+  .check { display: flex; gap: 10px; align-items: flex-start; font-weight: 400; } .check input { width: auto; margin-top: 5px; }
+  button { font: inherit; font-weight: 600; padding: 10px 16px; border-radius: 10px; border: 1px solid var(--brand); background: var(--brand); color: #fff; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--brand); } button:disabled { opacity: .45; cursor: not-allowed; }
+  .prompt { font-size: 2.4rem; font-weight: 700; text-align: center; margin: 8px 0; }
+  .meter { height: 12px; background: #e3ece8; border-radius: 6px; overflow: hidden; } .meter > div { height: 100%; width: 0; background: var(--brand); }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; } th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--line); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Voice recorder</h1>
+  <p class="muted">Internal tool for collecting consented voice samples to test and improve LinguaLink Play’s voice recognition. Recordings stay in this browser until you download them; nothing is uploaded.</p>
+
+  <section>
+    <h2>1. Consent</h2>
+    <label class="check"><input type="checkbox" id="consent"> <span>The speaker (or, for a child, their parent or guardian) has agreed in writing that these recordings may be used to test and train LinguaLink Play’s voice recognition, kept securely and deleted when no longer needed.</span></label>
+  </section>
+
+  <section>
+    <h2>2. Speaker (no names)</h2>
+    <div class="grid">
+      <label>Speaker code <input id="code" placeholder="S01" maxlength="8"></label>
+      <label>Age group <select id="age"><option value="">Choose</option><option>3-6</option><option>7-12</option><option>13-17</option><option>18+</option></select></label>
+      <label>Sex <select id="sex"><option value="">Prefer not to say</option><option>female</option><option>male</option></select></label>
+      <label>First language <select id="lang"><option>Urdu</option><option>English</option><option>Punjabi</option><option>Other</option></select></label>
+      <label>Device <select id="device"><option>phone</option><option>tablet</option><option>laptop</option><option>desktop</option></select></label>
+      <label>Microphone <select id="micType"><option>built-in</option><option>headset</option><option>earbuds</option><option>external</option></select></label>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Record</h2>
+    <p class="muted" id="status">Tick consent and enter a speaker code to start.</p>
+    <div class="prompt" id="prompt">&nbsp;</div>
+    <p class="muted" id="hint" style="text-align:center">&nbsp;</p>
+    <div class="meter"><div id="meter"></div></div>
+    <div class="row" style="margin-top:12px">
+      <button id="start" disabled>Start microphone</button>
+      <button id="rec" disabled>Record (3 s)</button>
+      <button id="play" class="ghost" disabled>Play back</button>
+      <button id="redo" class="ghost" disabled>Redo</button>
+      <button id="next" class="ghost" disabled>Keep and next</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. Clips</h2>
+    <table><thead><tr><th>File</th><th>Sound</th><th>Take</th><th>Length</th></tr></thead><tbody id="list"></tbody></table>
+    <div class="row" style="margin-top:12px">
+      <button id="export" disabled>Download ZIP</button>
+      <button id="clear" class="ghost">Clear all</button>
+    </div>
+    <p class="muted" style="margin-top:8px">The ZIP holds one WAV per clip (mono, 16-bit, the microphone’s own sample rate, no noise suppression) and <code>manifest.json</code>. Store it only in the team’s secure folder.</p>
+  </section>
+</main>
+<script type="module" src="record.js"></script>
+</body>
+</html>

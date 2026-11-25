@@ -538,7 +538,7 @@ export class Runner {
     const d = m.vowelDist || {};
     const rows = [
       `room ${r1(m.floorDb)} dB   voice ${r1(m.rise)} dB above (needs ${m.onDb})   level ${Math.round((m.level01 || 0) * 100)}%`,
-      `voiced ${m.voiced ? "YES" : "no"}   speech ${m.speech ? "YES" : "no"}   pitch ${m.periodic ? "YES " + Math.round(m.pitchHz || 0) + " Hz" : "no"}   hiss ${m.hiss ? "yes" : "no"}   game speaking ${m.selfSound ? "yes" : "no"}`,
+      `detector ${m.vadReady ? (m.vadSpeech ? "VOICE " : "quiet ") + Math.round((m.vadProb || 0) * 100) + "%" : m.vadError ? "failed" : m.vadEnabled ? "loading" : "off"}   voiced ${m.voiced ? "YES" : "no"}   speech ${m.speech ? "YES" : "no"}   pitch ${m.periodic ? "YES " + Math.round(m.pitchHz || 0) + " Hz" : "no"}   hiss ${m.hiss ? "yes" : "no"}   game speaking ${m.selfSound ? "yes" : "no"}`,
       `resonances F1 ${m.formants ? Math.round(m.formants.f1) : "-"}  F2 ${m.formants ? Math.round(m.formants.f2) : "-"}   heard vowel ${m.vowel || "-"}   hum ${r1(m.humRatio)}`,
       `distance  A ${r1(d.aah)}  E ${r1(d.ehh)}  O ${r1(d.ooo)}  I ${r1(d.eee)}  U ${r1(d.uuu)}   (smaller is closer)   own vowels: ${m.personal ? Object.keys(m.personal).join(" ") : "not learnt"}`,
     ];

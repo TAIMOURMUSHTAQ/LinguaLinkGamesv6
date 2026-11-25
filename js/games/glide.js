@@ -115,7 +115,7 @@ const def = {
   color: "#f4845f",
   focus: "Fly the bird with your voice: mmm, O, A, E, sss",
   input: "mic",
-  mic: { vowels: true, onDb: 8, offDb: 5, softDb: 5 },
+  mic: { vowels: true, vad: true, onDb: 8, offDb: 5, softDb: 5 },
   inputLabel: "Microphone (each sound flies to its own height)",
   touchLabel: "Drag up and down on the screen, or use the arrow keys",
   skills: ["Vowels and other sounds", "Listening and answering", "Quiet and loud voice"],
@@ -181,7 +181,9 @@ const def = {
     g.onPointer = (type, x, y) => { if (ctx.mode === "touch" && (type === "down" || ctx.pointer.down)) { g.targetH = clamp((BOTTOM - y) / (BOTTOM - TOP), 0, 1); if (g.waiting) g.touched = true; } };
     g.start = () => { const nx = nextRing(); if (nx) { announce(nx.v); g.lastAnnounced = nx; } };
 
-    const hearing = () => ctx.mic && (ctx.mic.speech || ctx.mic.voiced) && !ctx.mic.selfSound;
+    // A voice: the loudness and voice-band checks, or the voice detector (vad.js), which adds soft
+    // voices it hears as speech (it misses steady vowels and hums, so it never vetoes).
+    const hearing = () => ctx.mic && !ctx.mic.selfSound && (ctx.mic.speech || ctx.mic.voiced || ctx.mic.vadSpeech);
 
     // The sound being made, when it is clear enough for this level: a hiss, a hum, or one of the
     // three vowels (strict: this vowel and no other). Anything else is no sound for the bird.
@@ -194,13 +196,29 @@ const def = {
       if (mic.isHum && mic.isHum() && !(mic.vowel && ["eee", "ehh", "aah"].includes(mic.vowel))) return "mmm";
       return null;
     };
+    // On the first levels a voice the strict test is unsure of still moves the bird, more slowly,
+    // towards the learnt vowel it is closest to, so the game always answers the child.
+    const guessVowel = () => {
+      const mic = ctx.mic;
+      if (L.lenience < 0.6 || !hearing() || !(mic.periodic || mic.voiced) || mic.hiss) return null;
+      // only the child's own learnt vowels: the resonance reading alone is not reliable enough to steer
+      // with (a child's "eee" can read as O)
+      const t = mic.heardTemplate ? mic.heardTemplate(1) : null;
+      return t && GLIDE_VOWELS.includes(t) ? t : null;
+    };
 
     const moveBird = (dt) => {
       if (sensors) {
         g.heard = heardVowel();
-        const to = heightFor(g.heard);
-        // fly towards the height of the sound; with no sound the bird keeps its height
-        const want = to == null ? 0 : clamp((to - g.birdH) * 5, -RATE, RATE);
+        // a guess must stay the same for 0.3 s, so a reading that flickers for a frame never moves the bird
+        const guess = g.heard ? null : guessVowel();
+        g.guessT = guess && guess === g.lastGuess ? (g.guessT || 0) + dt : 0;
+        g.lastGuess = guess;
+        g.guess = guess && g.guessT >= 0.3 ? guess : null;
+        const to = heightFor(g.heard || g.guess);
+        // fly towards the height of the sound (half as fast for a guess); with no sound the bird keeps its height
+        const rate = g.heard ? RATE : RATE / 2;
+        const want = to == null ? 0 : clamp((to - g.birdH) * 5, -rate, rate);
         g.vel = lerp(g.vel, want, Math.min(1, dt * 9));
         g.birdH = clamp(g.birdH + g.vel * dt, 0, 1);
       } else {

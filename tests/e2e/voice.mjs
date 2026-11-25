@@ -165,7 +165,7 @@ try {
   page.close(); await sleep(800);
 
   // ---------- Balloon Breeze, level 1 (rounds ask for aaa, eee, aaa, eee) ----------
-  const BZ = "{ p: r.game.progress, sound: r.game.sound, round: r.game.round, done: r.game.roundsDone, ready: r.game.ready }";
+  const BZ = "{ p: r.game.progress, sound: r.game.sound, round: r.game.round, done: r.game.roundsDone, ready: r.game.ready, heardAs: r.game.heardAs }";
   const mix = () => { const x = new Float64Array(6 * SR); x.set(claps(2, 0.5), 0); x.set(hiss(2, 0.15), 2 * SR); x.set(noise(2, 0.06), 4 * SR); return x; };
   const noisy = await playWith("noise.wav", mix, "breeze", 0, 40, BZ);
   check("Balloon Breeze: claps, hiss and noise never fill the balloon", noisy.out.length > 50 && noisy.out.every((s) => s.p === 0), `highest ${Math.max(...noisy.out.map((s) => s.p))} over ${noisy.out.length} samples`);
@@ -174,8 +174,17 @@ try {
   const playRows = onlyA.out.filter((s) => s.ready !== false && s.sound);
   const eeeRows = onlyA.out.filter((s) => s.sound === "ehh");   // round 2 is E "ehh"
   check("Balloon Breeze: a held aaa finishes the aaa round", onlyA.out.some((s) => s.done >= 1), `rounds done ${Math.max(...onlyA.out.map((s) => s.done))}, samples ${playRows.length}`);
-  check("Balloon Breeze: a held aaa does nothing in the E (ehh) round", eeeRows.length > 10 && eeeRows.every((s) => s.p === 0), `ehh samples ${eeeRows.length}, highest ${Math.max(0, ...eeeRows.map((s) => s.p))}`);
-  check("Balloon Breeze: no script errors while playing", noisy.errors.length + onlyA.errors.length === 0, JSON.stringify([...noisy.errors, ...onlyA.errors].slice(0, 2)));
+  // 6.5: on the first levels another sound still fills the balloon, more slowly, and the game says what
+  // it heard; the last levels stay strict (checked below).
+  const halfAt = (rows) => { const r0 = rows[0], h = rows.find((r) => r.p >= 0.5); return r0 && h ? h.t - r0.t : Infinity; };
+  const aahRows = onlyA.out.filter((s) => s.sound === "aah" && s.ready <= 0);
+  const eRows = eeeRows.filter((s) => s.ready <= 0);
+  check("Balloon Breeze level 1: a held aaa fills the E round more slowly than the A round", aahRows.length > 5 && eRows.length > 5 && halfAt(eRows) >= 1.3 * halfAt(aahRows), `half full after ${halfAt(aahRows).toFixed(1)} s (A round) and ${halfAt(eRows).toFixed(1)} s (E round)`);
+  check("Balloon Breeze level 1: in the E round the game says it heard A", eRows.some((s) => s.heardAs === "aah"), `heard as ${[...new Set(eRows.map((s) => s.heardAs))].join(",")}`);
+  const strictA = await playWith("only-aah-strict.wav", () => vowel(...VOICE.aah, 8, 0.25), "breeze", 3, 45, BZ);
+  const oRows = strictA.out.filter((s) => s.sound === "ooo" && s.ready <= 0);   // level 4 (strict): A, then O
+  check("Balloon Breeze level 4 (strict): a held aaa does nothing in the O round", oRows.length > 10 && oRows.every((s) => s.p === 0), `ooo samples ${oRows.length}, highest ${Math.max(0, ...oRows.map((s) => s.p))}`);
+  check("Balloon Breeze: no script errors while playing", noisy.errors.length + onlyA.errors.length + strictA.errors.length === 0, JSON.stringify([...noisy.errors, ...onlyA.errors, ...strictA.errors].slice(0, 2)));
 
   // ---------- Sky Glide, level 1, played by one sound only ----------
   // Each vowel has its own height: U 0.1, O 0.3, A 0.5, I 0.7, E 0.9. The voice check comes first, and

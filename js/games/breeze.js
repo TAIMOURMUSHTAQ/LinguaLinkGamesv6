@@ -20,11 +20,11 @@ import { speakWord } from "../kit/audio.js";
 // lenience: 1 accepts close neighbours (ooo for uuu), 0 needs a clear match. It tightens level by level.
 // target: seconds of the sound for each balloon: 5, 10, 15, 20, 25.
 export const LEVELS = [
-  { name: "First Puffs", goal: "Say A, E and O. Each sound for 5 seconds to blow up the balloon.", target: 5, rounds: 3, continuous: false, steadyTol: null, lenience: 1, sounds: ["aah", "ehh", "ooo"], settings: { target_sec: 5, rounds: 3, lenience: 1 } },
-  { name: "Bigger Balloons", goal: "A, E and O, 10 seconds each, twice. Take a breath when you need to.", target: 10, rounds: 6, continuous: false, steadyTol: null, lenience: 0.8, sounds: ["ooo", "aah", "ehh"], settings: { target_sec: 10, rounds: 6, lenience: 0.8 } },
-  { name: "High in the Sky", goal: "A, E and O, 15 seconds each, twice. Keep the sound clear.", target: 15, rounds: 6, continuous: false, steadyTol: null, lenience: 0.6, sounds: ["ehh", "ooo", "aah"], settings: { target_sec: 15, rounds: 6, lenience: 0.6 } },
-  { name: "Gentle Voice", goal: "A, E and O, 20 seconds each, twice, with a steady voice.", target: 20, rounds: 6, continuous: false, steadyTol: 8, lenience: 0.4, sounds: ["aah", "ooo", "ehh"], settings: { target_sec: 20, rounds: 6, steady_tolerance_db: 8, lenience: 0.4 } },
-  { name: "Over the Mountains", goal: "A, E and O, 25 seconds each, twice: smooth, steady and clear.", target: 25, rounds: 6, continuous: false, steadyTol: 6, lenience: 0.25, sounds: ["ooo", "ehh", "aah"], settings: { target_sec: 25, rounds: 6, steady_tolerance_db: 6, lenience: 0.25 } },
+  { name: "First Puffs", partial: 0.6, goal: "Say A, E and O. Each sound for 5 seconds to blow up the balloon.", target: 5, rounds: 3, continuous: false, steadyTol: null, lenience: 1, sounds: ["aah", "ehh", "ooo"], settings: { target_sec: 5, rounds: 3, lenience: 1 } },
+  { name: "Bigger Balloons", partial: 0.5, goal: "A, E and O, 10 seconds each, twice. Take a breath when you need to.", target: 10, rounds: 6, continuous: false, steadyTol: null, lenience: 0.8, sounds: ["ooo", "aah", "ehh"], settings: { target_sec: 10, rounds: 6, lenience: 0.8 } },
+  { name: "High in the Sky", partial: 0.4, goal: "A, E and O, 15 seconds each, twice. Keep the sound clear.", target: 15, rounds: 6, continuous: false, steadyTol: null, lenience: 0.6, sounds: ["ehh", "ooo", "aah"], settings: { target_sec: 15, rounds: 6, lenience: 0.6 } },
+  { name: "Gentle Voice", partial: 0, goal: "A, E and O, 20 seconds each, twice, with a steady voice.", target: 20, rounds: 6, continuous: false, steadyTol: 8, lenience: 0.4, sounds: ["aah", "ooo", "ehh"], settings: { target_sec: 20, rounds: 6, steady_tolerance_db: 8, lenience: 0.4 } },
+  { name: "Over the Mountains", partial: 0, goal: "A, E and O, 25 seconds each, twice: smooth, steady and clear.", target: 25, rounds: 6, continuous: false, steadyTol: 6, lenience: 0.25, sounds: ["ooo", "ehh", "aah"], settings: { target_sec: 25, rounds: 6, steady_tolerance_db: 6, lenience: 0.25 } },
 ];
 
 // The sound for each round, cycling through the level's list.
@@ -109,7 +109,7 @@ const def = {
   color: "#ef476f",
   focus: "Blow up the balloon with your voice: A, E, O",
   input: "mic",
-  mic: { vowels: true, onDb: 9, offDb: 5, softDb: 7 },
+  mic: { vowels: true, vad: true, onDb: 9, offDb: 5, softDb: 7 },
   inputLabel: "Microphone (only the sound asked for counts)",
   touchLabel: "Hold the big button while the child holds the sound",
   skills: ["Long sounds", "Clear sounds", "Steady voice"],
@@ -232,7 +232,9 @@ const def = {
         // the sound asked for.
         const mic = ctx.mic;
         // a real voice (a clear pitch), not a hiss, noise or a whisper
-        const heard = (mic.voiced || mic.speech) && mic.periodic && !mic.hiss;
+        // The voice detector (vad.js) adds a second way in: a soft or breathy voice it hears as speech
+        // counts with a pitch or a clear loudness. It never vetoes: it misses steady held vowels and hums.
+        const heard = !mic.hiss && (((mic.voiced || mic.speech) && mic.periodic) || (mic.vadSpeech && (mic.periodic || mic.voiced)));
         if (heard) g.speechFrames++;
         // Learning this vowel (its first round): the child's own sound is collected for a moment, with a
         // forgiving test meanwhile, then the strict test uses the child's own vowel.
@@ -255,7 +257,12 @@ const def = {
         // the strict test (forgiving while learning), and the sound must last a moment (MATCH_SEC)
         const match = heard && (g.learn ? mic.isVowel(g.sound, 1) : mic.isClearVowel(g.sound, g.lenience));
         if (match) { g.matchT += dt; g.missT = 0; } else { g.missT += dt; if (g.missT > 0.25) g.matchT = 0; }
-        voicing = match && g.matchT >= MATCH_SEC;
+        // Full speed for the sound asked for. On the first levels any voice still fills the balloon,
+        // more slowly (L.partial), so the game always answers the child; the last levels are strict.
+        // While a vowel is being learnt, the child's voice counts in full.
+        const partial = g.learn && !(mic.clearlyOtherThan && mic.clearlyOtherThan(g.sound)) ? 1 : (L.partial || 0);
+        g.rate = match && g.matchT >= MATCH_SEC ? 1 : heard && partial > 0 ? partial : 0;
+        voicing = g.rate > 0;
         if (match) { g.targetFrames++; g.wrongT = 0; g.heardAs = null; }
         else if (mic.voiced || mic.speech) {
           g.wrongT += dt;
@@ -275,13 +282,14 @@ const def = {
         }
       } else {
         voicing = g.touchDown;
+        g.rate = 1;
       }
       if (voicing) {
         g.voicedFrames++;
         if (steady) g.steadyFrames++;
         g.hold += dt;
         g.roundLongest = Math.max(g.roundLongest, g.hold);
-        if (steady) g.progress = clamp(g.progress + dt / g.target, 0, 1);
+        if (steady) g.progress = clamp(g.progress + (dt / g.target) * (g.rate ?? 1), 0, 1);
         else g.warn = 0.6;
       } else {
         if (g.hold > 0.25) { g.breaks++; ctx.event("voice_break", { after_sec: Math.round(g.hold * 10) / 10 }); }

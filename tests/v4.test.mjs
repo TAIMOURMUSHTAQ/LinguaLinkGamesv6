@@ -181,6 +181,20 @@ function makeCtx(def, over = {}) {
 const mockMic = (over = {}) => ({ voiced: false, speech: false, periodic: false, get steadyVoice() { return this.periodic; }, hiss: false, selfSound: false, level01: 0, rise: 0, vowel: null, formants: null, _want: null, personal: null, isVowel(v) { return this._want === v; }, isClearVowel(v) { return this._want === v; }, isHum() { return this._want === "mmm"; }, direction() { return this._dir || 0; }, setAnchors(a) { this.personal = a; }, ...over });
 const { rememberVowels, forgetVowels, createVowelCheck, CHECK_ORDER } = await import("../js/kit/vowelcheck.js");
 
+test("Balloon Breeze: on the strict levels only the sound asked for moves the balloon", () => {
+  const mic = mockMic();
+  rememberVowels({ aah: { f1: 800, f2: 1200, s1: 0.2, s2: 0.2 }, ooo: { f1: 500, f2: 850, s1: 0.2, s2: 0.2 }, ehh: { f1: 550, f2: 1850, s1: 0.2, s2: 0.2 } });
+  const ctx = makeCtx(breeze, { mode: "sensors", mic, level: breeze.levels[3], levelIndex: 3 });
+  const g = breeze.create(ctx);
+  g.start();
+  const run = (sec) => { for (let i = 0; i < sec * 20; i++) g.update(0.05); };
+  run(3);
+  Object.assign(mic, { voiced: true, periodic: true, _want: "uuu", vowel: "uuu" }); run(2);
+  assert.equal(g.progress, 0, "the wrong vowel does nothing on level 4");
+  Object.assign(mic, { _want: g.sound, vowel: g.sound }); run(2);
+  assert.ok(g.progress > 0, "the right vowel fills it");
+});
+
 test("Balloon Breeze: only the sound asked for moves the balloon", () => {
   const mic = mockMic();
   rememberVowels({ aah: { f1: 800, f2: 1200, s1: 0.2, s2: 0.2 } }); // the voice check was done earlier this visit
@@ -197,8 +211,9 @@ test("Balloon Breeze: only the sound asked for moves the balloon", () => {
   // loud noise with no pitch: a clap, a fan, a hiss
   Object.assign(mic, { voiced: true, periodic: false, _want: null }); run(1); assert.equal(g.progress, 0, "noise does nothing");
   Object.assign(mic, { voiced: true, periodic: true, hiss: true, _want: "aah" }); run(1); assert.equal(g.progress, 0, "a hiss does nothing");
-  // a real voice, wrong vowel
-  Object.assign(mic, { hiss: false, _want: "uuu", vowel: "uuu" }); run(1); assert.equal(g.progress, 0, "the wrong vowel does nothing");
+  // a real voice, wrong vowel: on level 1 it still fills the balloon, more slowly (6.5)
+  Object.assign(mic, { hiss: false, _want: "uuu", vowel: "uuu" }); run(1);
+  assert.ok(g.progress > 0.05 && g.progress < 0.15, `the wrong vowel fills it slowly on level 1: ${g.progress}`);
   // the right vowel
   Object.assign(mic, { _want: g.sound, vowel: g.sound }); run(3);
   assert.ok(g.progress > 0.5, `the right vowel fills it: ${g.progress}`);

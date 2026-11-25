@@ -1,5 +1,45 @@
 # Changelog
 
+## 6.5.0 (2026-11-25)
+
+### Voice games answer the child again
+Version 2 felt more responsive because it never judged the vowel: any held voice filled the balloon,
+and Sky Glide steered by pitch. Since 6.2 a voice the strict vowel test was unsure of did nothing,
+which children experienced as “it can’t hear me”.
+- **Balloon Breeze:** on levels 1 to 3 any real voice now fills the balloon, more slowly when it is not
+  the vowel asked for (60%, 50%, 40% speed), while the game says which sound it heard. Levels 4 and 5
+  stay strict. A vowel’s first (learning) round counts the child’s voice in full, unless it clearly
+  sounds like another vowel. `target_sound_pct` still reports how much of the voice was the right vowel.
+- **Sky Glide:** on levels 1 to 3, when the strict test is unsure, the bird flies at half speed towards
+  the learnt vowel the sound is closest to (the guess must hold for 0.3 s). Levels 4 and 5 stay strict.
+
+### Voice detector (Silero VAD)
+- `js/kit/vad.js` and `vad-worklet.js` run **Silero VAD v5** (MIT, 2.3 MB, `models/silero_vad_v5.onnx`)
+  with **ONNX Runtime Web 1.22.0** (MIT, `vendor/onnxruntime/`), on the device, single-threaded, served
+  from our server. The hub preloads it; `?tune=1` shows its decision and probability.
+- It is a **second way in, never a veto**: tested on lifelike held sounds, it did not count steady
+  “aaa” or hums “mmm” as speech (it is trained on conversation), though it caught “ehh” and “eee”
+  (`tests/e2e/out/vad-probe`). So a voice counts if the old checks pass or the detector hears speech
+  with some voicing; claps, hiss and noise still never count.
+
+### Fish Feast
+- **“Squeeze your eyes shut” removed** (23 moves now). “Nod yes” moves to level 1 so the first level
+  of Big face moves still has five different moves.
+- **Pip eats real sea food** instead of apples, strawberries, watermelon and pizza, drawn in code and
+  moving as it would in the sea: a shrimp that darts and flicks its tail (level 1), a wriggling sea
+  worm (2), a glowing swarm of plankton (3), a scuttling baby crab (4), and all of them plus drifting
+  seaweed in the party level (5). The food drifts nearer while the child holds the move; then Pip
+  snaps it up in a puff of crumbs and bubbles.
+
+### Voice recorder for real data (internal)
+- `lab/record.html`: consented, code-only (no names) recordings of A, E, I, O, U, M and S, two takes
+  each, raw WAV, exported as one ZIP with a manifest; nothing uploaded. Served locally; on Render only
+  with `LAB=1`. These recordings are the basis for measuring and training phoneme recognition.
+
+### Tests
+- Unit tests 95/95 (new: voice detector hysteresis, Breeze strict levels, Fish Feast sea food). Browser voice test now checks
+  the slower fill and “heard A” on level 1, and strictness on level 4.
+
 ## 6.4.0 (2026-11-25)
 
 ### Vowel recognition (Balloon Breeze, Sky Glide)

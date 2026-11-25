@@ -344,3 +344,17 @@ test("Mic: a sound the resonances clearly call another vowel is not learnt (O an
   m.vowelDist = null;
   assert.equal(m.clearlyOtherThan("ooo"), false, "no reading: no objection");
 });
+
+test("Voice detector: on at once, rides over short dips, off after a quarter second of quiet", async () => {
+  const { vadStep, VAD_ON, VAD_OFF, VAD_HANG } = await import("../js/kit/vad.js");
+  let s = null;
+  s = vadStep(s, 0.1, 0.032); assert.equal(s.speaking, false, "quiet stays off");
+  s = vadStep(s, VAD_ON + 0.01, 0.032); assert.equal(s.speaking, true, "speech turns it on in one chunk");
+  s = vadStep(s, (VAD_ON + VAD_OFF) / 2, 0.032); assert.equal(s.speaking, true, "between the thresholds it stays on");
+  let t = 0;
+  while (t < VAD_HANG - 0.05) { s = vadStep(s, 0.05, 0.032); t += 0.032; }
+  assert.equal(s.speaking, true, "a dip shorter than the hangover does not switch it off");
+  s = vadStep(s, 0.6, 0.032);
+  for (let i = 0; i < Math.ceil(VAD_HANG / 0.032) + 1; i++) s = vadStep(s, 0.05, 0.032);
+  assert.equal(s.speaking, false, "sustained quiet switches it off");
+});

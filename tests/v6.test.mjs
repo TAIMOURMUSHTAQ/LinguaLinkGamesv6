@@ -32,8 +32,10 @@ test("Hold games go 5, 10, 15, 20, 25 seconds, and Balloon Breeze uses A, E and 
 test("Fish Feast: many moves, shuffled, never the same twice in a row, all of them played", () => {
   const playable = Object.keys(mouth.MOVES).filter((m) => !mouth.MOVES[m].hidden);
   assert.ok(playable.length >= 20, `${playable.length} moves`);
-  for (const m of ["tongueOut", "tongueLeft", "tongueRight", "tongueInOut", "tongueSides", "headLeft", "headRight", "nodYes", "shakeNo", "tongueUp", "browsUp", "eyesShut", "puff", "wide", "smile", "kiss", "open"]) assert.ok(mouth.MOVES[m], m);
+  for (const m of ["tongueOut", "tongueLeft", "tongueRight", "tongueInOut", "tongueSides", "headLeft", "headRight", "nodYes", "shakeNo", "tongueUp", "browsUp", "puff", "wide", "smile", "kiss", "open"]) assert.ok(mouth.MOVES[m], m);
   for (const m of ["surprised", "sad", "cross"]) assert.ok(!mouth.MOVES[m], `${m} is gone (v6.2)`);
+  assert.ok(!mouth.MOVES.eyesShut, "eyes shut is gone (v6.5)");
+  for (const p of [...mouth.POOLS.small, ...mouth.POOLS.big]) assert.ok(!p.includes("eyesShut"));
   assert.equal(mouth.MOVES.tongueOut.key, "tongueDown", "tongue out is shown as tongue down");
   const used = new Set();
   for (const v of ["mix", "small", "big"]) {
@@ -64,7 +66,6 @@ test("Fish Feast: head turns, nods, eyebrows, moods and the tongue are measured 
   assert.ok(on("headDown", { nod: 0.58 }));
   assert.ok(on("browsUp", { browUp: 0.6 }) && on("browsUp", { browH: 0.36 }));
   assert.ok(on("tongueUp", { tongueUpR: 0.06, openR: 0.06 }) && !on("tongueUp", { tongueUpR: 0.06 }), "tongue up, with the lips apart");
-  assert.ok(on("eyesShut", { blink: 0.8 }) && !on("eyesShut", { blink: 0.3 }));
   assert.ok(on("tongueOut", { tongueDown: 0.06, openR: 0.06 }), "tongue out");
   assert.ok(!on("tongueOut", { tongueDown: 0.06 }), "with the lips closed it is not a tongue");
   assert.ok(on("tongueLeft", { tongueL: 0.05 }) && !on("tongueRight", { tongueL: 0.05 }));
@@ -192,4 +193,13 @@ test("Voice check: a wrong or repeated sound cannot spoil recognition", async ()
   assert.ok(swapped && !swapped.aah && swapped.eee, "an eee said for A is not learned as A");
   const good = V.makeVowelAnchors(Object.fromEntries(Object.entries(child).map(([v, f]) => [v, mk(...f)])));
   assert.deepEqual(Object.keys(good).sort(), ["aah", "eee", "ehh", "ooo", "uuu"], "a normal check keeps all five");
+});
+
+test("Fish Feast: Pip eats sea food, a different kind per level, and level 5 mixes them all", () => {
+  const foods = mouth.LEVELS.map((l) => l.food);
+  assert.deepEqual(foods, ["shrimp", "worm", "plankton", "crab", "mix"]);
+  for (const l of mouth.LEVELS) assert.ok(!l.treat, "no more apples or pizza");
+  const mixed = new Set(Array.from({ length: 10 }, (_, i) => mouth.foodFor(mouth.LEVELS[4], i)));
+  assert.deepEqual([...mixed].sort(), [...mouth.FOODS].sort(), "the party level brings every sea food");
+  for (const f of mouth.FOODS) assert.ok(mouth.FOOD_COLOR[f], f);
 });

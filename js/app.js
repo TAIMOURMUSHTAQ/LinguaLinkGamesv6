@@ -8,9 +8,10 @@ import { history, clearHistory, listenForAcks, flushOutbox } from "./kit/results
 import { getProgress, isUnlocked, currentLevel, totalStars, clearProgress, STICKERS, STICKER_TOTAL } from "./kit/progress.js";
 import { describe, perRound, formatDuration, progressByLevel } from "./kit/report.js";
 import { preload, onLoadProgress, isLoaded, warmEngine } from "./kit/vision.js";
+import { warmVad } from "./kit/vad.js";
 import { W, H } from "./kit/draw.js";
 
-const VERSION = "6.4.0";
+const VERSION = "6.5.0";
 const cfg = getConfig();
 let runner = null;
 let GAMES = [], byId = {};
@@ -195,7 +196,7 @@ function showHome({ push = true, replace = false } = {}) {
   // a few seconds after the home screen opens, fetch the camera engine in the background (not in
   // touch mode, and not when the device asks to save data)
   const saveData = typeof navigator !== "undefined" && navigator.connection && navigator.connection.saveData;
-  if (cfg.mode !== "touch" && !saveData) setTimeout(() => { if (!runner) warmEngine(); }, 3000);
+  if (cfg.mode !== "touch" && !saveData) setTimeout(() => { if (!runner) { warmEngine(); warmVad(); } }, 3000);
 }
 
 // ---------- level map ----------

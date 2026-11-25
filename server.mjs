@@ -17,13 +17,13 @@ const TYPES = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".webmanifest": "application/manifest+json; charset=utf-8",
   ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2", ".wasm": "application/wasm",
-  ".task": "application/octet-stream", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".pdf": "application/pdf",
+  ".task": "application/octet-stream", ".onnx": "application/octet-stream", ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8", ".pdf": "application/pdf",
 };
 const COMPRESS = new Set([".html", ".js", ".mjs", ".css", ".json", ".webmanifest", ".svg", ".md", ".txt"]);
 // The camera engine and models are big. The engine shrinks to a quarter when compressed (11 MB to
 // about 3 MB) and the models by about a quarter, so they are compressed once, kept in memory and
 // sent compressed: the first camera game starts much sooner, above all on a phone or a slow line.
-const BIG_COMPRESS = new Set([".wasm", ".task"]);
+const BIG_COMPRESS = new Set([".wasm", ".task", ".onnx"]);
 const packed = new Map();   // "file|etag|enc" -> Promise<Buffer>
 const brAsync = promisify(brotliCompress), gzAsync = promisify(gzip);
 function packedBody(file, etag, enc) {
@@ -37,7 +37,7 @@ function packedBody(file, etag, enc) {
 }
 // Prepare the compressed engine and models as soon as the server starts, so no visitor waits for it.
 async function warmPacked() {
-  for (const dir of ["vendor/mediapipe/wasm", "models"]) {
+  for (const dir of ["vendor/mediapipe/wasm", "vendor/onnxruntime", "models"]) {
     const names = await fs.readdir(join(ROOT, dir)).catch(() => []);
     for (const n of names) {
       if (!BIG_COMPRESS.has(extname(n).toLowerCase())) continue;
@@ -51,6 +51,8 @@ async function warmPacked() {
 
 // Never served: tooling, tests, reports and project notes. Only the app itself is public.
 const PRIVATE = ["/tests/", "/scripts/", "/node_modules/", "/.git/", "/qa/", "/docs/", "/integration/"];
+// The internal voice recorder (lab/) is served locally, and on Render only when LAB=1 is set.
+const LAB_OPEN = !process.env.RENDER || process.env.LAB === "1";
 const PRIVATE_FILES = ["/package.json", "/package-lock.json", "/render.yaml", "/server.mjs", "/start-mac-linux.sh", "/start-windows.bat"];
 
 const SECURITY = {
@@ -86,7 +88,7 @@ const server = createServer(async (req, res) => {
     let path = decodeURIComponent(url.pathname);
     if (path === "/healthz") { res.writeHead(200, { "Content-Type": "text/plain" }); return res.end("ok"); }
     if (path.endsWith("/")) path += "index.html";
-    if (PRIVATE.some((p) => path.startsWith(p)) || PRIVATE_FILES.includes(path) || path.endsWith(".md") || path.endsWith(".pdf") || path.split("/").some((s) => s.startsWith("."))) { res.writeHead(404); return res.end("Not found"); }
+    if ((path.startsWith("/lab/") && !LAB_OPEN) || PRIVATE.some((p) => path.startsWith(p)) || PRIVATE_FILES.includes(path) || path.endsWith(".md") || path.endsWith(".pdf") || path.split("/").some((s) => s.startsWith("."))) { res.writeHead(404); return res.end("Not found"); }
     const file = normalize(join(ROOT, path));
     if (!file.startsWith(ROOT + sep)) { res.writeHead(403); return res.end(); }
     const st = await fs.stat(file).catch(() => null);

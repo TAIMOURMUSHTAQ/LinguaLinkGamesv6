@@ -1,6 +1,7 @@
 // FISH FEAST: face, mouth and tongue moves with the camera.
 // Pip the fish copies the child's face. Each card asks for a move, held until the ring fills, or
-// done a few times over (tongue out and in, head yes and no). Pip eats a treat for every move.
+// done a few times over (tongue out and in, head yes and no). Pip eats sea food for every move:
+// shrimp, sea worms, plankton, baby crabs and seaweed, each moving as it would in the sea.
 // Three ways to play (chosen on the level card):
 //   Mixed moves: big and small moves take turns.
 //   Mouth and tongue: lips, cheeks and tongue (small, careful moves).
@@ -49,23 +50,22 @@ export const MOVES = {
   nodYes: { key: "nodYes", cycle: ["headDown", null], color: "#0096c7", group: "big" },
   shakeNo: { key: "shakeNo", cycle: ["headLeft", "headRight"], color: "#0077b6", group: "big" },
   browsUp: { key: "browsUp", thr: 0.2, color: "#90be6d", group: "big" },
-  eyesShut: { key: "eyesShut", thr: 0.45, color: "#43aa8b", group: "big" },
 };
 
 // The moves of each level, by way of playing. Each level keeps the last one's moves and adds new ones.
 const grow = (steps) => steps.reduce((acc, add) => [...acc, [...(acc[acc.length - 1] || []), ...add]], []);
 export const POOLS = {
   small: grow([["open", "smile", "kiss", "tongueOut", "puff"], ["oh", "tongueInOut", "side", "tongueUp"], ["tongueLeft", "tongueRight", "lipsIn"], ["tongueSides"], []]),
-  big: grow([["wide", "headLeft", "headRight", "browsUp", "eyesShut"], ["nodYes", "chew"], ["shakeNo"], ["jaw"], []]),
+  big: grow([["wide", "headLeft", "headRight", "browsUp", "nodYes"], ["chew"], ["shakeNo"], ["jaw"], []]),
 };
 
 // hold: seconds for every move in the level. reach: how big the movement must be (1 = each move's thr).
 export const LEVELS = [
-  { name: "Big Bites", goal: "Copy the faces: open wide, smile, tongue out and more. Hold each one for 5 seconds. 6 moves.", reps: 6, hold: 5, holdEnd: 5, reach: 0.85, treat: "🍎", settings: { reps: 6, hold_sec: 5 } },
-  { name: "Happy Fish", goal: "New moves: tongue up, tongue out and in, nod yes, chewing. 10 seconds each. 7 moves.", reps: 7, hold: 10, holdEnd: 10, reach: 0.95, treat: "🍓", settings: { reps: 7, hold_sec: 10 } },
-  { name: "Bubble Faces", goal: "Tongue left and right, shake no, lips hidden and more. 15 seconds each. 8 moves.", reps: 8, hold: 15, holdEnd: 15, reach: 1, treat: "🫧", settings: { reps: 8, hold_sec: 15 } },
-  { name: "Silly Faces", goal: "Tongue side to side, jaw to the side and all the faces. 20 seconds each. 9 moves.", reps: 9, hold: 20, holdEnd: 20, reach: 1.05, treat: "🍉", settings: { reps: 9, hold_sec: 20 } },
-  { name: "Pufferfish Party", goal: "Every move in a mixed party. 25 seconds each. 10 moves.", reps: 10, hold: 25, holdEnd: 25, reach: 1.1, treat: "🍕", settings: { reps: 10, hold_sec: 25 } },
+  { name: "Big Bites", goal: "Copy the faces: open wide, smile, tongue out, nod yes and more. Hold each one for 5 seconds. 6 moves.", reps: 6, hold: 5, holdEnd: 5, reach: 0.85, food: "shrimp", settings: { reps: 6, hold_sec: 5 } },
+  { name: "Happy Fish", goal: "New moves: tongue up, tongue out and in, chewing. 10 seconds each. 7 moves.", reps: 7, hold: 10, holdEnd: 10, reach: 0.95, food: "worm", settings: { reps: 7, hold_sec: 10 } },
+  { name: "Bubble Faces", goal: "Tongue left and right, shake no, lips hidden and more. 15 seconds each. 8 moves.", reps: 8, hold: 15, holdEnd: 15, reach: 1, food: "plankton", settings: { reps: 8, hold_sec: 15 } },
+  { name: "Silly Faces", goal: "Tongue side to side, jaw to the side and all the faces. 20 seconds each. 9 moves.", reps: 9, hold: 20, holdEnd: 20, reach: 1.05, food: "crab", settings: { reps: 9, hold_sec: 20 } },
+  { name: "Pufferfish Party", goal: "Every move in a mixed party. 25 seconds each. 10 moves.", reps: 10, hold: 25, holdEnd: 25, reach: 1.1, food: "mix", settings: { reps: 10, hold_sec: 25 } },
 ];
 
 // How many times a back-and-forth move is done: more on later levels (3, 4, 6, 8, 10).
@@ -239,8 +239,6 @@ export function moveAmount(move, f, b = {}) {
       return Math.max(0, gain(f, b, "nod"));
     case "browsUp":
       return Math.max(gain(f, b, "browUp"), ratio("browH") * 1.2);
-    case "eyesShut":
-      return gain(f, b, "blink");
     default:
       return 0; // a back-and-forth move is judged by its two parts
   }
@@ -255,6 +253,78 @@ export function moveActive(move, face, base, scale = 1, held = false) {
 
 export function scoreMouth({ done, total }) {
   return clampScore((done / total) * 100);
+}
+
+// ---------- sea food for Pip ----------
+// What a small fish really eats, drawn in code: shrimp, sea worms, plankton, baby crabs and seaweed.
+// Each moves the way it does in the sea. Level 5 mixes them.
+export const FOODS = ["shrimp", "worm", "plankton", "crab", "seaweed"];
+export const FOOD_COLOR = { shrimp: "#ff9e80", worm: "#e05a6d", plankton: "#7ee8c8", crab: "#f08a3c", seaweed: "#5fae5b" };
+export const foodFor = (level, i) => (level.food === "mix" ? FOODS[i % FOODS.length] : level.food || "shrimp");
+
+// Where the food is and how it moves: it drifts nearer to Pip while the child holds the move (k 0..1).
+function foodMotion(kind, t, k) {
+  const x = 250 + k * 120, y = 410;
+  switch (kind) {
+    case "shrimp": { const dart = Math.pow(Math.max(0, Math.sin(t * 2.6)), 12); return { x: x - dart * 26, y: y + Math.sin(t * 1.3) * 10, flick: dart }; }
+    case "crab": return { x: x + Math.sin(t * 3.4) * 14, y: y + 6 - Math.abs(Math.sin(t * 6.8)) * 3, flick: 0 };
+    case "plankton": return { x: x + Math.sin(t * 0.7) * 8, y: y + Math.cos(t * 0.9) * 8, flick: 0 };
+    case "seaweed": return { x: x + Math.sin(t * 0.8) * 6, y: y + Math.sin(t * 0.5) * 12, flick: 0 };
+    default: return { x, y: y + Math.sin(t * 1.1) * 6, flick: 0 };   // worm
+  }
+}
+
+function drawFood(c, kind, x, y, t, scale = 1, flick = 0) {
+  c.save(); c.translate(x, y); c.scale(scale, scale);
+  if (kind === "shrimp") {
+    // a curved, see-through body of segments, a fanned tail, legs paddling, long feelers
+    c.rotate(-0.15 + flick * 0.5);
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI * 0.95 - i * 0.2, r = 30;
+      c.fillStyle = i % 2 ? "rgba(255,158,128,0.9)" : "rgba(255,186,160,0.9)";
+      c.beginPath(); c.ellipse(Math.cos(a) * r, Math.sin(a) * r - 18, 13 - i * 1.2, 10 - i, a + Math.PI / 2, 0, Math.PI * 2); c.fill();
+    }
+    c.fillStyle = "rgba(255,120,90,0.85)";
+    c.beginPath(); c.moveTo(24, 2); c.lineTo(40, -6 - flick * 6); c.lineTo(42, 10); c.closePath(); c.fill();
+    c.beginPath(); c.moveTo(24, 2); c.lineTo(38, 16 + flick * 6); c.lineTo(30, 18); c.closePath(); c.fill();
+    c.strokeStyle = "rgba(230,110,80,0.9)"; c.lineWidth = 2;
+    for (let i = 0; i < 5; i++) { const lx = -14 + i * 7, sw = Math.sin(t * 10 + i) * 4; c.beginPath(); c.moveTo(lx, -6); c.lineTo(lx + sw, 6); c.stroke(); }
+    c.lineWidth = 1.5; c.beginPath(); c.moveTo(-28, -18); c.quadraticCurveTo(-60, -40, -78, -30 + Math.sin(t * 3) * 6); c.moveTo(-28, -16); c.quadraticCurveTo(-58, -26, -74, -10 + Math.sin(t * 3 + 1) * 6); c.stroke();
+    c.fillStyle = "#1d2140"; c.beginPath(); c.arc(-24, -22, 3.2, 0, Math.PI * 2); c.fill();
+  } else if (kind === "worm") {
+    // a sea worm wriggling: a thick wavy body with paler rings and a darker head
+    c.lineCap = "round";
+    const pts = []; for (let i = 0; i <= 16; i++) { const u = i / 16; pts.push([-46 + u * 92, Math.sin(u * 7 + t * 5) * (6 + u * 6)]); }
+    c.strokeStyle = "#c94459"; c.lineWidth = 12; c.beginPath(); pts.forEach(([px, py], i) => (i ? c.lineTo(px, py) : c.moveTo(px, py))); c.stroke();
+    c.strokeStyle = "#f08a98"; c.lineWidth = 2; for (let i = 2; i < 16; i += 2) { const [px, py] = pts[i]; c.beginPath(); c.moveTo(px, py - 5); c.lineTo(px, py + 5); c.stroke(); }
+    c.fillStyle = "#9c2f42"; const [hx, hy] = pts[16]; c.beginPath(); c.arc(hx, hy, 7, 0, Math.PI * 2); c.fill();
+  } else if (kind === "plankton") {
+    // a small swarm of copepods: tiny see-through bodies with feelers, glowing faintly
+    for (let i = 0; i < 12; i++) {
+      const a = i * 2.39996, r = 10 + (i % 4) * 11;
+      const px = Math.cos(a + t * 0.6) * r + Math.sin(t * 2 + i) * 3, py = Math.sin(a + t * 0.6) * r * 0.7 + Math.cos(t * 2.4 + i) * 3;
+      c.fillStyle = "rgba(126,232,200,0.25)"; c.beginPath(); c.arc(px, py, 7, 0, Math.PI * 2); c.fill();
+      c.fillStyle = "rgba(190,255,235,0.95)"; c.beginPath(); c.ellipse(px, py, 4, 2.6, a, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = "rgba(190,255,235,0.8)"; c.lineWidth = 1; c.beginPath(); c.moveTo(px - 3, py); c.lineTo(px - 8, py - 4 + Math.sin(t * 8 + i) * 2); c.moveTo(px - 3, py); c.lineTo(px - 8, py + 4); c.stroke();
+    }
+  } else if (kind === "crab") {
+    // a baby crab scuttling: round shell, claws up, legs stepping, eyes on stalks
+    c.strokeStyle = "#c96a2b"; c.lineWidth = 3.5; c.lineCap = "round";
+    for (let i = 0; i < 3; i++) for (const sgn of [-1, 1]) { const step = Math.sin(t * 12 + i * 1.7 + (sgn > 0 ? 1 : 0)) * 4; c.beginPath(); c.moveTo(sgn * 14, 4 + i * 4); c.lineTo(sgn * 28, 6 + i * 5 + step); c.lineTo(sgn * 34, 16 + i * 4 + step); c.stroke(); }
+    for (const sgn of [-1, 1]) { c.beginPath(); c.moveTo(sgn * 16, -4); c.lineTo(sgn * 26, -18); c.stroke(); c.fillStyle = "#f08a3c"; c.beginPath(); c.ellipse(sgn * 28, -24, 8, 6, sgn * 0.5, 0, Math.PI * 2); c.fill(); }
+    c.fillStyle = "#f08a3c"; c.beginPath(); c.ellipse(0, 0, 22, 15, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "rgba(255,200,150,0.6)"; c.beginPath(); c.ellipse(-6, -5, 9, 4, -0.3, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = "#c96a2b"; c.lineWidth = 2; for (const sgn of [-1, 1]) { c.beginPath(); c.moveTo(sgn * 6, -13); c.lineTo(sgn * 8, -22); c.stroke(); c.fillStyle = "#1d2140"; c.beginPath(); c.arc(sgn * 8, -24, 3, 0, Math.PI * 2); c.fill(); }
+  } else {
+    // a bit of seaweed drifting: a wavy green frond with a paler middle line
+    c.rotate(Math.sin(t * 0.9) * 0.25);
+    c.fillStyle = "#4f9a4b"; c.beginPath(); c.moveTo(0, 40);
+    for (let i = 0; i <= 10; i++) { const u = i / 10; c.lineTo(10 + Math.sin(u * 9 + t * 2) * 4 - u * 4, 40 - u * 80); }
+    for (let i = 10; i >= 0; i--) { const u = i / 10; c.lineTo(-10 + Math.sin(u * 9 + t * 2 + 1) * 4 + u * 4, 40 - u * 80); }
+    c.closePath(); c.fill();
+    c.strokeStyle = "rgba(170,225,140,0.8)"; c.lineWidth = 2; c.beginPath(); c.moveTo(0, 38); c.quadraticCurveTo(Math.sin(t * 2) * 4, 0, 0, -38); c.stroke();
+  }
+  c.restore();
 }
 
 function drawSea(c, t, li) {
@@ -411,7 +481,6 @@ function drawCueIcon(c, x, y, move, t = 0) {
     else { c.beginPath(); c.moveTo(-10, 20); c.lineTo(10, 20); c.stroke(); }
   }
   else if (move === "sad") { c.beginPath(); c.arc(0, 32, 16, 1.15 * Math.PI, 1.85 * Math.PI); c.stroke(); c.fillStyle = "#4cc9f0"; c.beginPath(); c.ellipse(-16, 4 + (t * 20) % 14, 3, 5, 0, 0, Math.PI * 2); c.fill(); }
-  else if (move === "eyesShut") { c.fillStyle = "#ffe0b5"; c.fillRect(-24, -18, 48, 16); c.lineWidth = 4; c.beginPath(); c.arc(-15, -12, 6, 0, Math.PI); c.moveTo(21, -12); c.arc(15, -12, 6, 0, Math.PI); c.stroke(); c.beginPath(); c.moveTo(-8, 20); c.lineTo(8, 20); c.stroke(); }
   else if (move === "chew") { const k = (Math.sin(t * 6) + 1) / 2; c.beginPath(); c.ellipse(0, 18, 12, 3 + k * 13, 0, 0, Math.PI * 2); c.fill(); }
   else { c.fillStyle = "rgba(239,71,111,0.6)"; c.beginPath(); c.arc(-28, 12, 15, 0, Math.PI * 2); c.arc(28, 12, 15, 0, Math.PI * 2); c.fill(); c.beginPath(); c.moveTo(-8, 20); c.lineTo(8, 20); c.stroke(); }
   c.restore();
@@ -431,7 +500,7 @@ const def = {
     ["🙂", "Look at the screen with your face relaxed for a moment."],
     ["🃏", "The card shows a face. Make the same face."],
     ["⏳", "Hold it until the ring is full. Some moves you do again and again, like tongue out and in."],
-    ["🐟", "Every move feeds Pip a treat and Pip grows."],
+    ["🐟", "Every move feeds Pip something from the sea, a shrimp, a worm or plankton, and Pip grows."],
   ],
   levels: LEVELS,
   variants: [
@@ -507,7 +576,7 @@ const def = {
         g.bestByMove[move] = Math.max(g.bestByMove[move] || 0, g.holdT);
       }
       if (ok) { g.growth = Math.min(1, g.growth + 1 / seq.length); g.pop = 1; }
-      if (ok) { ctx.sfx.success(); ctx.fx.burst(470, 400, { n: 24, colors: [MOVES[move].color, "#fff", "#ffd166"] }); if (g.results.filter((r) => r.done).length % 3 === 0) ctx.praise(640, 600); }
+      if (ok) { ctx.sfx.success(); ctx.fx.burst(470, 400, { n: 24, colors: [FOOD_COLOR[foodFor(L, g.i)], "#e6f8ff", "#bfe9ff"] }); if (g.results.filter((r) => r.done).length % 3 === 0) ctx.praise(640, 600); }
       else ctx.sfx.soft();
       g.state = ok ? "eat" : "missed";
       g.stateT = 0;
@@ -532,7 +601,7 @@ const def = {
       const to = {
         open: Math.max(k("open") * 0.7, k("wide")), smile: k("smile"), kiss: k("kiss"), puff: k("puff"), oh: k("oh"), side: Math.max(k("side"), k("jaw")), inn: k("lipsIn"),
         tongue: Math.max(k("tongueOut"), k("tongueLeft"), k("tongueRight"), k("tongueUp")), tongueX: k("tongueRight") - k("tongueLeft"), tongueUp: k("tongueUp"),
-        turn: k("headRight") - k("headLeft"), nod: k("headDown"), brow: k("browsUp"), shut: k("eyesShut"), sad: 0,
+        turn: k("headRight") - k("headLeft"), nod: k("headDown"), brow: k("browsUp"), shut: 0, sad: 0,
       };
       for (const key of Object.keys(g.mouth)) g.mouth[key] = lerp(g.mouth[key], to[key], 0.4);
     };
@@ -545,7 +614,7 @@ const def = {
         open: { open: p }, wide: { open: p }, chew: { open: p }, smile: { smile: p }, kiss: { kiss: on }, puff: { puff: p }, oh: { oh: on }, side: { side: p }, jaw: { side: p }, lipsIn: { inn: on },
         tongueOut: { tongue: p }, tongueUp: { tongue: 1, tongueUp: p }, tongueInOut: { tongue: p }, tongueLeft: { tongue: 1, tongueX: -p }, tongueRight: { tongue: 1, tongueX: p }, tongueSides: { tongue: 1, tongueX: p * 2 - 1 },
         headLeft: { turn: -p }, headRight: { turn: p }, shakeNo: { turn: p * 2 - 1 }, nodYes: { nod: p },
-        browsUp: { brow: p }, eyesShut: { shut: on },
+        browsUp: { brow: p },
       }[move] || {};
       return { ...z, ...set };
     };
@@ -663,14 +732,27 @@ const def = {
       const tm = ctx.anim;
       drawSea(c, tm, ctx.levelIndex);
       const move = seq[Math.min(g.i, seq.length - 1)];
-      // treat drifting toward Pip's mouth
-      const tx = g.state === "eat" ? lerp(250, 470, Math.min(1, g.stateT * 2)) : 250 + Math.sin(ctx.time * 2) * 10;
-      if (g.state !== "eat" || g.stateT < 0.5) {
-        // the treat swells while the child holds the move
-        const k = g.state === "cue" ? clamp(g.hold / g.holdT, 0, 1) : 1;
-        glow(c, tx, 410, 40 + k * 40, "rgba(255,240,150,0.7)");
-        for (let q = 0; q < 5; q++) { const a = ctx.anim * 2.2 + (q * Math.PI * 2) / 5; sparkle(c, tx + Math.cos(a) * (46 + k * 26), 410 + Math.sin(a) * (46 + k * 26), 8 + k * 5, "#fff", a); }
-        c.save(); c.font = `${Math.round(44 + k * 46)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(L.treat, tx, 412); c.restore();
+      // sea food drifting nearer while the child holds the move, then Pip snaps it up
+      const kind = foodFor(L, Math.min(g.i, seq.length - 1));
+      const kHold = g.state === "cue" ? clamp(g.hold / g.holdT, 0, 1) : g.state === "eat" ? 1 : 0;
+      const fm = foodMotion(kind, ctx.time, kHold);
+      if (g.state !== "eat" || g.stateT < 0.45) {
+        const e = g.state === "eat" ? Math.min(1, g.stateT / 0.45) : 0;
+        const fx = lerp(fm.x, 470, e * e), fy = lerp(fm.y, 400, e * e);
+        glow(c, fx, fy, 90, kind === "plankton" ? "rgba(126,232,200,0.35)" : "rgba(200,235,255,0.18)");
+        drawFood(c, kind, fx, fy, ctx.time, 1.6 * (1 - e * 0.4), fm.flick);
+      } else if (g.stateT < 1.2) {
+        // crumbs and bubbles where Pip ate
+        const u = (g.stateT - 0.45) / 0.75;
+        c.save(); c.globalAlpha = 1 - u;
+        for (let q = 0; q < 9; q++) {
+          const a = q * 0.7 + 0.3, d = 18 + u * 70;
+          c.fillStyle = q % 3 ? FOOD_COLOR[kind] : "#ffe9d6";
+          c.beginPath(); c.arc(470 + Math.cos(a) * d * 0.8, 400 + Math.sin(a) * d * 0.6 + u * 30, 3.5 - u * 2, 0, Math.PI * 2); c.fill();
+        }
+        c.strokeStyle = "rgba(230,248,255,0.9)"; c.lineWidth = 2;
+        for (let q = 0; q < 5; q++) { const bx = 450 + q * 11, by = 392 - u * (60 + q * 18); c.beginPath(); c.arc(bx + Math.sin(u * 8 + q) * 4, by, 4 + (q % 3) * 2, 0, Math.PI * 2); c.stroke(); }
+        c.restore();
       }
       c.save(); c.translate(640, 360); { const sc = 0.82 + 0.2 * g.growth + (g.pop > 0 ? Math.sin(g.pop * Math.PI) * 0.05 : 0); c.scale(sc, sc); } c.translate(-640, -360);
       drawFish(c, 640, 360, ctx.time, g.mouth);

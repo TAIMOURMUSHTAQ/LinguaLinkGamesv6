@@ -1,6 +1,7 @@
 // Microphone input: loudness, voice on/off, and pitch, all computed in the browser.
 // No audio is stored or sent anywhere.
 import { speakerBusy } from "./audio.js";
+import { Vad } from "./vad.js";
 import { fingerprint, meanPrint, matchTemplate, nearestTemplate, templateDistance } from "./vowelprint.js";
 import { VOWELS, voiceType, vowelDistances, nearestVowel, matchesVowel, clearVowel, humRatio, HUM_RATIO, directionFrom, formantsFrom, cleanSpectrum, bandEnergy, isHiss } from "./vowel.js";
 
@@ -102,7 +103,10 @@ export class Mic {
   // the room a sound must be to count as voice. echoCancellation: on for Word Garden, so the spoken
   // model word is not picked up as the child's attempt.
   // pitchSmooth: how many pitch readings are averaged (a median); fewer follow a sliding voice faster.
-  constructor({ pitch = false, vowels = false, echoCancellation = false, onDb = 12, offDb = 7, softDb = 6, pitchSmooth = 7 } = {}) {
+  // vad: also run the Silero voice activity detector (vad.js), which tells a voice from noise.
+  constructor({ pitch = false, vowels = false, echoCancellation = false, onDb = 12, offDb = 7, softDb = 6, pitchSmooth = 7, vad = false } = {}) {
+    this.vadEnabled = vad;
+    this.vad = null;
     this.pitchSmooth = Math.max(1, pitchSmooth);
     this.ready = false;
     this.db = -100;
@@ -191,6 +195,13 @@ export class Mic {
     this._onDevice = () => { clearTimeout(this._devT); this._devT = setTimeout(() => this._reconnect("device_change"), 600); };
     try { navigator.mediaDevices.addEventListener("devicechange", this._onDevice); } catch {}
     this.ready = true;
+    // The voice detector starts in the background; until it is ready (or if it cannot run on this
+    // device) the loudness and pitch checks are used, as before.
+    if (this.vadEnabled && this.ctx.audioWorklet && typeof AudioWorkletNode !== "undefined") {
+      const vad = new Vad();
+      this.vad = vad;
+      vad.start(this.ctx, this.src).catch((e) => { this.vadError = String((e && e.message) || e); if (this.vad === vad) this.vad = null; vad.close(); });
+    }
   }
 
   _attach(stream) {
@@ -198,6 +209,7 @@ export class Mic {
     this.stream = stream;
     this.src = this.ctx.createMediaStreamSource(stream);
     this.src.connect(this.analyser);
+    if (this.vad) this.vad.connect(this.src);
     const track = stream.getAudioTracks()[0];
     // The track ends when its device goes away (headset unplugged, Bluetooth dropped).
     if (track) track.addEventListener("ended", () => this._reconnect("track_ended"));
@@ -252,7 +264,7 @@ export class Mic {
     if (speakerBusy()) {
       this.selfSound = true;
       this._busyT += dt;
-      if (this._busyT > 0.3) { this.voiced = false; this.db = this.floorDb; this.rise = 0; this.level01 = 0; this._hang = 0; this._onT = 0; this._resetVowel(); }
+      if (this._busyT > 0.3) { this.voiced = false; this.db = this.floorDb; this.rise = 0; this.level01 = 0; this._hang = 0; this._onT = 0; this._resetVowel(); if (this.vad) this.vad.reset(); }
       return;
     }
     this.selfSound = false;
@@ -322,6 +334,16 @@ export class Mic {
     if (this.voiced && !this.periodic && !this.speech) this._noPitchT += dt; else this._noPitchT = 0;
     if (this._noPitchT > 6) { this.floorDb = this.db - 2; this._noPitchT = 0; this.voiced = false; this._hang = 0; }
   }
+
+  // The voice detector (vad.js): ready, its speech decision and its latest probability.
+  get vadReady() { return !!(this.vad && this.vad.ready); }
+  get vadSpeech() { return this.vadReady && this.vad.speaking; }
+  get vadProb() { return this.vadReady ? this.vad.prob : null; }
+
+  // Is someone using their voice right now? The loudness and voice-band checks, or the voice detector.
+  // The detector is a second way in, never a veto: tested on held sounds it missed steady "aaa" and
+  // hums "mmm" (it is trained on conversation), but it catches soft and breathy speech.
+  get voicePresent() { return this.voiced || this.speech || this.vadSpeech; }
 
   // True when the voice is really phonated: a clear pitch was heard a moment ago.
   get periodic() { return this._pitchAge < 0.25; }
@@ -476,6 +498,8 @@ export class Mic {
   stop() {
     this.stopped = true;
     clearTimeout(this._devT);
+    try { this.vad && this.vad.close(); } catch {}
+    this.vad = null;
     try { this._onDevice && navigator.mediaDevices.removeEventListener("devicechange", this._onDevice); } catch {}
     try { this._onTap && window.removeEventListener("pointerdown", this._onTap, true); } catch {}
     try { this.stream && this.stream.getTracks().forEach((t) => t.stop()); } catch {}
